@@ -13,19 +13,34 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 
+
 function App() {
   const [data, setData] = useState([]);
   const [latest, setLatest] = useState(null);
-
   const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA')); 
-  const [selectedMetric, setSelectedMetric] = useState('temperature');
+  // เปลี่ยนค่าเริ่มต้นเป็น 'all' เพื่อให้เปิดมาเห็นกราฟรวมทุกค่าก่อนเลย
+  const [selectedMetric, setSelectedMetric] = useState('all');
 
-  const chartConfig = {
-    temperature: { title: "Temperature Trend", color: "#ef4444", unit: "°C" },
-    humidity: { title: "Humidity Trend", color: "#3b82f6", unit: "%" },
-    current_amp: { title: "Current Trend", color: "#eab308", unit: "A" },
-    noise_level: { title: "Noise Level Trend", color: "#8b5cf6", unit: "dB" }
+  // 1. กำหนดเกณฑ์แจ้งเตือน (ตรงกับใน Edge Function ของคุณ)
+  const alertThresholds = {
+    temperature: 35,
+    humidity: 70,
+    current_amp: 10,
+    noise_level: 80
   };
+
+  // 2. ข้อมูลการแสดงผลของแต่ละกราฟ
+  const metricConfigs = {
+    temperature: { key: "temperature", name: "Temp (°C)", color: "#ef4444" },
+    humidity: { key: "humidity", name: "Humidity (%)", color: "#3b82f6" },
+    current_amp: { key: "current_amp", name: "Current (A)", color: "#eab308" },
+    noise_level: { key: "noise_level", name: "Noise (dB)", color: "#8b5cf6" }
+  };
+
+  // จัดการว่ากราฟจะต้องแสดงกี่เส้น
+  const metricsToRender = selectedMetric === 'all' 
+    ? Object.values(metricConfigs) 
+    : [metricConfigs[selectedMetric]];
 
   useEffect(() => {
     const fetchDataByDate = async () => {
@@ -53,7 +68,7 @@ function App() {
       .channel('sensor_changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sensor_logs' }, (payload) => {
         const newData = payload.new;
-        const newDateTh = new Date(newData.created_at).toLocaleDateString('en-CA');
+        const newDateTh = new Date(newData.created_at).toLocaleString('en-CA', { timeZone: 'Asia/Bangkok' }).split(',')[0];
         
         if (newDateTh === selectedDate) {
           setLatest(newData);
@@ -75,28 +90,22 @@ function App() {
           <h1 className="text-3xl font-bold text-gray-800">ServerGuard Dashboard</h1>
         </header>
 
-        {/* --- เรียกใช้ Component แผงควบคุม --- */}
-        <ControlPanel 
-          selectedDate={selectedDate} 
-          onDateChange={setSelectedDate} 
-          selectedMetric={selectedMetric} 
-          onMetricChange={setSelectedMetric} 
-        />
-
+        {/* ตัวเลขสถานะล่าสุด (Card) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard title="Temperature" value={latest?.temperature || '-'} unit="°C" icon={Thermometer} color="#ef4444" />
-          <StatCard title="Humidity" value={latest?.humidity || '-'} unit="%" icon={Droplets} color="#3b82f6" />
-          <StatCard title="Current" value={latest?.current_amp || '-'} unit="A" icon={Zap} color="#eab308" />
-          <StatCard title="Noise Level" value={latest?.noise_level || '-'} unit="dB" icon={Volume2} color="#8b5cf6" />
+          <StatCard title="Temperature" value={latest?.temperature || '-'} unit="°C" icon={Thermometer} color="#ef4444" threshold={alertThresholds.temperature} />
+          <StatCard title="Humidity" value={latest?.humidity || '-'} unit="%" icon={Droplets} color="#3b82f6" threshold={alertThresholds.humidity} />
+          <StatCard title="Current" value={latest?.current_amp || '-'} unit="A" icon={Zap} color="#eab308" threshold={alertThresholds.current_amp} />
+          <StatCard title="Noise Level" value={latest?.noise_level || '-'} unit="dB" icon={Volume2} color="#8b5cf6" threshold={alertThresholds.noise_level} />
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
+        {/* กราฟ (อยู่ด้านบนเมนูควบคุม) */}
+        <div className="mb-6">
           {data.length > 0 ? (
             <SensorChart 
               data={data} 
-              title={`${chartConfig[selectedMetric].title} (${selectedDate})`} 
-              dataKey={selectedMetric} 
-              color={chartConfig[selectedMetric].color} 
+              title={selectedMetric === 'all' ? "All Sensors Trend" : `${metricConfigs[selectedMetric].name} Trend`} 
+              metrics={metricsToRender} 
+              thresholds={alertThresholds}
             />
           ) : (
             <div className="bg-white p-10 rounded-xl shadow-md text-center text-gray-500">
@@ -104,6 +113,15 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* แผงควบคุม (ย้ายมาไว้ข้างใต้กราฟแล้ว!) */}
+        <ControlPanel 
+          selectedDate={selectedDate} 
+          onDateChange={setSelectedDate} 
+          selectedMetric={selectedMetric} 
+          onMetricChange={setSelectedMetric} 
+        />
+
       </div>
     </div>
   );

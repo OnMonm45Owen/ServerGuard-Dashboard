@@ -5,7 +5,6 @@ const ControlPanel = ({ selectedDate, onDateChange, selectedMetric, onMetricChan
   return (
     <div className="bg-white p-5 rounded-xl shadow-sm mb-8 flex flex-wrap items-center gap-6 border border-gray-100">
       
-      {/* 1. ปฏิทินเลือกวันที่ */}
       <div className="flex items-center gap-3">
         <Calendar className="text-gray-400" size={24} />
         <div className="flex flex-col">
@@ -19,9 +18,8 @@ const ControlPanel = ({ selectedDate, onDateChange, selectedMetric, onMetricChan
         </div>
       </div>
 
-      <div className="h-10 w-px bg-gray-200 hidden md:block"></div> {/* เส้นคั่น */}
+      <div className="h-10 w-px bg-gray-200 hidden md:block"></div>
 
-      {/* 2. เมนูเลือกค่าในกราฟ */}
       <div className="flex items-center gap-3">
         <Filter className="text-gray-400" size={24} />
         <div className="flex flex-col">
@@ -31,6 +29,8 @@ const ControlPanel = ({ selectedDate, onDateChange, selectedMetric, onMetricChan
             onChange={(e) => onMetricChange(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
+            {/* เพิ่มตัวเลือก "รวมทุกค่า" ไว้บนสุด */}
+            <option value="all">รวมทุกค่า (All Metrics)</option>
             <option value="temperature">Temperature (°C)</option>
             <option value="humidity">Humidity (%)</option>
             <option value="current_amp">Current (A)</option>
