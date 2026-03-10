@@ -12,20 +12,31 @@ serve(async (req) => {
     // 💡 1. สร้าง Array เก็บสาเหตุของปัญหาที่ตรวจพบ
     const issues: string[] = [];
 
-    // เช็คทีละเงื่อนไขและเก็บสาเหตุ (อ้างอิงจาก METRICS_CONFIG ของคุณ)
+    // เช็คอุณหภูมิ
     if (record.temperature > 32) {
       issues.push("🔥 อุณหภูมิสูงเกินขีดจำกัด (> 32 °C) เสี่ยงต่อความร้อนสะสม");
     }
+
+    // เช็คความชื้น (อัปเดต: เพิ่มการแจ้งเตือนทั้งสูงและต่ำ)
     if (record.humidity > 75) {
       issues.push("💦 ความชื้นสูงเกินขีดจำกัด (> 75 %) ระวังหยดน้ำเกาะอุปกรณ์");
+    } else if (record.humidity < 30) {
+      issues.push("🌵 ความชื้นต่ำเกินไป (< 30 %) ระวังไฟฟ้าสถิตทำความเสียหายอุปกรณ์");
     }
-    if (record.current_amp === 0) {
-      issues.push("🔌 ไฟฟ้าขัดข้อง หรือ อุปกรณ์ดับ (0 A)");
-    } else if (record.current_amp > 8) {
-      issues.push("⚡ กระแสไฟโหลดเกินขีดจำกัด (> 8 A) ระวังระบบไฟโอเวอร์โหลด");
+
+    // เช็คแรงดันไฟฟ้า (Voltage) แทนกระแสไฟเดิม
+    if (record.voltage > 240) {
+      issues.push("⚡ แรงดันไฟฟ้าสูงผิดปกติ (> 240 V)");
+    } else if (record.voltage < 200 && record.voltage > 0) {
+      issues.push("🔌 แรงดันไฟฟ้าตก (< 200 V)");
     }
-    if (record.noise_level > 80) {
-      issues.push("🔊 ระดับเสียงดังผิดปกติ (> 80 dB) อาจมีบุคคลบุกรุกหรือพัดลมเซิร์ฟเวอร์ทำงานหนัก");
+
+    // เช็คระดับเสียงและความดังกระแทก
+    if (record.sound_peak > 0.6) {
+      issues.push("💥 แจ้งเตือนเสียงกระแทก! (Peak > 0.6)");
+    }
+    if (record.sound_db > 70) {
+      issues.push("🔊 แจ้งเตือนเสียงดังผิดปกติ! (> 70 dB)");
     }
 
     // ถ้าไม่มี Issue อะไรเลย ให้จบการทำงาน
@@ -54,12 +65,12 @@ ${issuesText}
 📊 ข้อมูลปัจจุบัน:
 🌡️ อุณหภูมิ: ${record.temperature} °C
 💧 ความชื้น: ${record.humidity} %
-⚡ กระแสไฟ: ${record.current_amp} A
-🔊 เสียง: ${record.noise_level} dB
+⚡ แรงดันไฟ: ${record.voltage} V
+🔊 ระดับเสียง: ${record.sound_db} dB
 🕒 เวลา: ${new Date(record.created_at).toLocaleString('th-TH')}
     `.trim();
 
-    // ยิง Request ไปที่ Messaging API
+    // ยิง Request ไปที่ Messaging API ของ LINE
     const lineRes = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {

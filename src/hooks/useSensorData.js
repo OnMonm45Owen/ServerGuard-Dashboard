@@ -2,29 +2,77 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-// 💡 รับค่า timeRange เข้ามาด้วย
+// 💡 รับค่า timeRange เข้ามาเพื่อดึงข้อมูลย้อนหลังตามช่วงเวลาที่เลือก
 export default function useSensorData(deviceId, selectedDate, timeRange = "24h") {
   const [history, setHistory] = useState([]);
   const [alerts, setAlerts] = useState([]);
 
+  // ฟังก์ชันจัดรูปแบบข้อมูลก่อนนำไปใช้งานใน App
   const formatLog = (log) => ({
     created_at: log.created_at,
     time: new Date(log.created_at).toLocaleTimeString("th-TH"),
     temperature: log.temperature,
     humidity: log.humidity,
-    current_amp: log.current_amp,
-    noise_level: log.noise_level,
+    voltage: log.voltage,     // เปลี่ยนจาก current_amp เป็น voltage
+    sound_db: log.sound_db,   // เพิ่มข้อมูลระดับเสียง dB
+    sound_rms: log.sound_rms, // เพิ่มข้อมูล sound_rms
+    sound_peak: log.sound_peak, // เพิ่มข้อมูล sound_peak
   });
 
-  // ฟังก์ชันดึงประวัติ Alert ย้อนหลังมาโชว์ในกรอบ History
+  // ฟังก์ชันดึงประวัติ Alert จากข้อมูลที่ดึงมา
   const loadPastAlerts = (logs) => {
     const pastAlerts = [];
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
-      Object.keys(METRICS_CONFIG).forEach((metric) => {
-        if (log[metric] > METRICS_CONFIG[metric].threshold) {
+      
+      // 1. ตรวจสอบเงื่อนไขแจ้งเตือนความชื้น (Humidity)
+      if (log.humidity > METRICS_CONFIG.humidity.threshold) {
+        pastAlerts.push({
+          metric: "humidity",
+          message: "💦 ความชื้นสูงเกินกำหนด! เสี่ยงเกิดหยดน้ำ",
+          value: log.humidity,
+          time: log.created_at,
+          device_id: log.device_id,
+        });
+      } else if (METRICS_CONFIG.humidity.thresholdMin && log.humidity < METRICS_CONFIG.humidity.thresholdMin) {
+        pastAlerts.push({
+          metric: "humidity",
+          message: "🌵 ความชื้นต่ำเกินไป! เสี่ยงเกิดไฟฟ้าสถิต",
+          value: log.humidity,
+          time: log.created_at,
+          device_id: log.device_id,
+        });
+      }
+
+      // 2. ตรวจสอบเงื่อนไขแจ้งเตือนเสียงกระแทก (Peak > 0.6)
+      if (log.sound_peak > 0.6) {
+        pastAlerts.push({
+          metric: "sound_peak",
+          message: "แจ้งเตือนเสียงกระแทก!",
+          value: log.sound_peak,
+          time: log.created_at,
+          device_id: log.device_id,
+        });
+      }
+
+      // 3. ตรวจสอบเงื่อนไขแจ้งเตือนเสียงดังผิดปกติ (dB > 70)
+      if (log.sound_db > 70) {
+        pastAlerts.push({
+          metric: "sound_db",
+          message: "แจ้งเตือนเสียงดังผิดปกติ!",
+          value: log.sound_db,
+          time: log.created_at,
+          device_id: log.device_id,
+        });
+      }
+
+      // 4. ตรวจสอบ Metric อื่นๆ (Temperature, Voltage) ตาม Threshold ใน Config
+      const otherMetrics = ["temperature", "voltage"];
+      otherMetrics.forEach((metric) => {
+        if (log[metric] > METRICS_CONFIG[metric]?.threshold) {
           pastAlerts.push({
             metric,
+            message: `${METRICS_CONFIG[metric].label} สูงเกินกำหนด!`,
             value: log[metric],
             time: log.created_at,
             device_id: log.device_id,
@@ -32,21 +80,65 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
         }
       });
     }
-    setAlerts(pastAlerts.slice(0, 30)); // โชว์ประวัติได้สูงสุด 30 รายการล่าสุด
+    setAlerts(pastAlerts.slice(0, 30)); // เก็บประวัติล่าสุด 30 รายการ
   };
 
+  // ฟังก์ชันตรวจสอบการแจ้งเตือนสำหรับข้อมูล Real-time ที่เพิ่งเข้ามา
   const checkAlert = (log) => {
     let newAlerts = [];
-    Object.keys(METRICS_CONFIG).forEach((metric) => {
-      if (log[metric] > METRICS_CONFIG[metric].threshold) {
+
+    // ตรวจสอบความชื้น Real-time
+    if (log.humidity > METRICS_CONFIG.humidity.threshold) {
+      newAlerts.push({
+        metric: "humidity",
+        message: "💦 ความชื้นสูงเกินกำหนด! เสี่ยงเกิดหยดน้ำ",
+        value: log.humidity,
+        time: log.created_at,
+        device_id: log.device_id,
+      });
+    } else if (METRICS_CONFIG.humidity.thresholdMin && log.humidity < METRICS_CONFIG.humidity.thresholdMin) {
+      newAlerts.push({
+        metric: "humidity",
+        message: "🌵 ความชื้นต่ำเกินไป! เสี่ยงเกิดไฟฟ้าสถิต",
+        value: log.humidity,
+        time: log.created_at,
+        device_id: log.device_id,
+      });
+    }
+
+    if (log.sound_peak > 0.6) {
+      newAlerts.push({
+        metric: "sound_peak",
+        message: "แจ้งเตือนเสียงกระแทก!",
+        value: log.sound_peak,
+        time: log.created_at,
+        device_id: log.device_id,
+      });
+    }
+
+    if (log.sound_db > 70) {
+      newAlerts.push({
+        metric: "sound_db",
+        message: "แจ้งเตือนเสียงดังผิดปกติ!",
+        value: log.sound_db,
+        time: log.created_at,
+        device_id: log.device_id,
+      });
+    }
+
+    const otherMetrics = ["temperature", "voltage"];
+    otherMetrics.forEach((metric) => {
+      if (log[metric] > METRICS_CONFIG[metric]?.threshold) {
         newAlerts.push({
           metric,
+          message: `${METRICS_CONFIG[metric].label} สูงเกินกำหนด!`,
           value: log[metric],
           time: log.created_at,
           device_id: log.device_id,
         });
       }
     });
+
     if (newAlerts.length > 0) {
       setAlerts((prev) => [...newAlerts, ...prev].slice(0, 30));
     }
@@ -56,11 +148,9 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
     if (!deviceId) return;
 
     const fetchHistory = async () => {
-      // 💡 1. หาวันที่สิ้นสุด (ตามปฏิทินที่เลือก หรือวันนี้)
       const end = selectedDate ? new Date(selectedDate) : new Date();
       end.setHours(23, 59, 59, 999);
 
-      // 💡 2. หาวันที่เริ่มต้น ตามปุ่มที่กด (24h, 7d, 30d)
       const start = new Date(end);
       if (timeRange === "24h") {
         start.setHours(0, 0, 0, 0); 
@@ -76,7 +166,7 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
         start.setHours(0, 0, 0, 0);
       }
 
-      // ดึงข้อมูลทั้งหมดในช่วงเวลาที่กำหนด
+      // ดึงข้อมูลจากตาราง sensor_logs
       const { data } = await supabase
         .from("sensor_logs")
         .select("*")
@@ -84,11 +174,11 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
         .gte("created_at", start.toISOString())
         .lte("created_at", end.toISOString())
         .order("created_at", { ascending: true })
-        .limit(5000); // กันเว็บค้างถ้าข้อมูลเยอะเกินไป
+        .limit(5000);
 
       if (data && data.length > 0) {
         setHistory(data.map(formatLog));
-        loadPastAlerts(data); // 💡 เรียกโชว์ประวัติ Alert ทันที
+        loadPastAlerts(data);
       } else {
         setHistory([]);
         setAlerts([]); 
@@ -100,7 +190,7 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
     const isToday = !selectedDate || new Date(selectedDate).toDateString() === new Date().toDateString();
     let channel;
     
-    // 💡 ปล่อยให้ Realtime ทำงานเพื่อวาดกราฟต่อท้ายไปเรื่อยๆ
+    // ตั้งค่า Realtime Subscription
     if (isToday) {
       channel = supabase
         .channel(`sensor-stream-${deviceId}`)
@@ -119,7 +209,7 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [deviceId, selectedDate, timeRange]); // 💡 ทำงานใหม่ทุกครั้งที่กดเปลี่ยนเวลา
+  }, [deviceId, selectedDate, timeRange]);
 
   return { history, alerts };
 }
