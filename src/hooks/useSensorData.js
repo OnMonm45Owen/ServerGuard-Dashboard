@@ -106,15 +106,15 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
       });
     }
 
-    if (log.sound_peak > 0.6) {
-      newAlerts.push({
-        metric: "sound_peak",
-        message: "แจ้งเตือนเสียงกระแทก!",
-        value: log.sound_peak,
-        time: log.created_at,
-        device_id: log.device_id,
-      });
-    }
+    // if (log.sound_peak > 0.6) {
+    //   newAlerts.push({
+    //     metric: "sound_peak",
+    //     message: "แจ้งเตือนเสียงกระแทก!",
+    //     value: log.sound_peak,
+    //     time: log.created_at,
+    //     device_id: log.device_id,
+    //   });
+    // }
 
     if (log.sound_db > 70) {
       newAlerts.push({

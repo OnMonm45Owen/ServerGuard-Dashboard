@@ -24,13 +24,13 @@ export const METRICS_CONFIG = {
     color: "#a855f7",
     threshold: 70
   },
-  sound_analysis: {
-    label: "Sound Analysis (RMS vs Peak)",
-    unit: "lvl",
-    isMultiLine: true,
-    metrics: [
-      { key: "sound_rms", label: "RMS", color: "#10b981" },
-      { key: "sound_peak", label: "Peak", color: "#f97316", threshold: 0.6 }
-    ]
-  }
+  // sound_analysis: {
+  //   label: "Sound Analysis (RMS vs Peak)",
+  //   unit: "lvl",
+  //   isMultiLine: true,
+  //   metrics: [
+  //     { key: "sound_rms", label: "RMS", color: "#10b981" },
+  //     { key: "sound_peak", label: "Peak", color: "#f97316", threshold: 0.6 }
+  //   ]
+  // }
 };

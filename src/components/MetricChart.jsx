@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from "react";
 import Chart from "chart.js/auto";
 import zoomPlugin from "chartjs-plugin-zoom";
-import 'chartjs-adapter-date-fns'; // สำหรับจัดการแกนเวลาจริง
-import { th } from 'date-fns/locale'; // สำหรับแสดงผลภาษาไทย
+import 'chartjs-adapter-date-fns'; 
+import { th } from 'date-fns/locale'; 
 
 Chart.register(zoomPlugin);
 
-export default function MetricChart({ history, activeMetric, config, darkMode }) {
+export default function MetricChart({ history, activeMetric, config, darkMode, timeRange }) {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
@@ -17,74 +17,74 @@ export default function MetricChart({ history, activeMetric, config, darkMode })
     const ctx = chartRef.current.getContext("2d");
     const cfg = config[activeMetric];
 
-    // ตั้งค่าสีตามโหมด (Icewall Theme)
+    // ตั้งค่าสีตามโหมด (ปรับให้ Contrast ต่ำลงเพื่อถนอมสายตา)
     const themeColors = {
-      grid: darkMode ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.08)",
+      grid: darkMode ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
       text: darkMode ? "#94a3b8" : "#64748b",
-      tooltipBg: darkMode ? "#1e293b" : "#0f172a",
+      tooltipBg: darkMode ? "#161D31" : "#1e293b",
+      tooltipBorder: darkMode ? "#3b4353" : "#e2e8f0"
     };
 
-    // สร้าง Gradient พื้นหลังกราฟ (ใช้สำหรับกราฟเส้นเดี่ยว)
+    // 💡 ฟังก์ชันเลือกรูปแบบเวลาใต้กราฟแยกตามช่วงเวลา
+    const getDisplayFormat = () => {
+      if (timeRange === '24h') {
+        return {
+          hour: 'HH:mm',     // เช่น 13:25
+          minute: 'HH:mm',
+          second: 'HH:mm:ss'
+        };
+      } else if (timeRange === '7d') {
+        return {
+          day: 'eee HH:mm',  // เช่น จ. 10:00
+          hour: 'eee HH:mm'
+        };
+      } else { // 30d
+        return {
+          day: 'd MMM',      // เช่น 13 มี.ค.
+          month: 'd MMM'
+        };
+      }
+    };
+
+    // สร้าง Gradient
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, darkMode ? "rgba(99, 102, 241, 0.2)" : "rgba(59, 130, 246, 0.3)");
+    const baseColor = cfg?.color || "#3b82f6";
+    gradient.addColorStop(0, darkMode ? `${baseColor}33` : `${baseColor}4D`);
     gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
-    let datasets = [];
+    const chartData = history
+      .map((log) => ({
+        x: new Date(log.created_at),
+        y: log[activeMetric],
+        isAlert: log[activeMetric] > cfg?.threshold || (cfg?.thresholdMin && log[activeMetric] < cfg?.thresholdMin)
+      }))
+      .sort((a, b) => a.x - b.x);
 
-    // ตรวจสอบว่าเป็นกราฟแบบหลายเส้น (Multi-line) หรือไม่
-    if (cfg.isMultiLine) {
-      datasets = cfg.metrics.map((m) => ({
-        label: m.label,
-        data: history.map((log) => ({
-          x: new Date(log.created_at),
-          y: log[m.key]
-        })).sort((a, b) => a.x - b.x),
-        borderColor: m.color,
-        backgroundColor: "transparent",
-        borderWidth: 2,
+    const datasets = [
+      {
+        label: cfg?.label,
+        data: chartData,
+        borderColor: baseColor,
+        backgroundColor: gradient,
+        fill: true,
         tension: 0.3,
+        borderWidth: 2,
+        pointRadius: chartData.map(d => d.isAlert ? 5 : 0),
+        pointHoverRadius: 7,
+        pointBackgroundColor: chartData.map(d => d.isAlert ? "#ef4444" : baseColor),
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+      },
+      {
+        label: "Limit",
+        data: chartData.map((d) => ({ x: d.x, y: cfg?.threshold })),
+        borderColor: "#ef4444",
+        borderDash: [6, 4],
+        borderWidth: 1.5,
         pointRadius: 0,
-        pointHoverRadius: 6,
-        order: 2
-      }));
-    } else {
-      // กราฟเส้นเดี่ยวปกติ
-      const chartData = history
-        .map((log) => ({
-          x: new Date(log.created_at),
-          y: log[activeMetric],
-          isAlert: log[activeMetric] > cfg.threshold
-        }))
-        .sort((a, b) => a.x - b.x);
-
-      datasets = [
-        {
-          label: cfg.label,
-          data: chartData,
-          borderColor: cfg.color,
-          backgroundColor: gradient,
-          fill: true,
-          tension: 0.3,
-          borderWidth: 3,
-          pointRadius: chartData.map(d => d.isAlert ? 6 : 0),
-          pointHoverRadius: 8,
-          pointBackgroundColor: chartData.map(d => d.isAlert ? "#ef4444" : "#fff"),
-          pointBorderColor: chartData.map(d => d.isAlert ? "#fff" : cfg.color),
-          pointBorderWidth: 2,
-          order: 2
-        },
-        {
-          label: "Limit",
-          data: chartData.map((d) => ({ x: d.x, y: cfg.threshold })),
-          borderColor: "#ef4444",
-          borderDash: [5, 5],
-          borderWidth: 1.5,
-          pointRadius: 0,
-          fill: false,
-          order: 1
-        }
-      ];
-    }
+        fill: false,
+      }
+    ];
 
     chartInstance.current = new Chart(ctx, {
       type: "line",
@@ -92,35 +92,31 @@ export default function MetricChart({ history, activeMetric, config, darkMode })
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: { duration: 500 },
         plugins: {
-          legend: { 
-            display: cfg.isMultiLine, // แสดง Legend เฉพาะตอนมีหลายเส้น
-            labels: { color: themeColors.text, font: { size: 11, weight: 'bold' } } 
-          },
+          legend: { display: false },
           zoom: {
-            pan: { enabled: true, mode: "x", threshold: 10 },
-            zoom: {
-              wheel: { enabled: true },
-              pinch: { enabled: true },
-              mode: "x",
-              drag: { enabled: true, backgroundColor: 'rgba(59, 130, 246, 0.1)' }
-            }
+            pan: { enabled: true, mode: "x" },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" }
           },
           tooltip: {
             backgroundColor: themeColors.tooltipBg,
-            titleFont: { size: 13, weight: 'bold' },
+            borderColor: themeColors.tooltipBorder,
+            borderWidth: 1,
+            cornerRadius: 12,
             padding: 12,
-            cornerRadius: 10,
             callbacks: {
               title: (items) => {
                 const date = new Date(items[0].raw.x);
-                return date.toLocaleString('th-TH', { 
-                  hour: '2-digit', minute: '2-digit', second: '2-digit',
-                  day: 'numeric', month: 'short', year: '2-digit'
-                }) + " น.";
+                return date.toLocaleString('th-TH', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  day: 'numeric',
+                  month: 'short',
+                  hour12: false // 💡 บังคับ 24 ชม. ใน Tooltip
+                });
               },
-              label: (context) => ` ${context.dataset.label}: ${context.raw.y} ${cfg.unit}`
+              label: (context) => ` ${context.dataset.label}: ${context.raw.y} ${cfg?.unit}`
             }
           }
         },
@@ -129,20 +125,23 @@ export default function MetricChart({ history, activeMetric, config, darkMode })
             type: "time",
             adapters: { date: { locale: th } },
             time: {
-              displayFormats: {
-                second: 'HH:mm:ss',
-                minute: 'HH:mm',
-                hour: 'HH:mm',
-                day: 'd MMM'
-              }
+              displayFormats: getDisplayFormat() // 💡 ใช้ฟังก์ชันแยกรูปแบบตามช่วงเวลา
             },
-            grid: { display: true, color: themeColors.grid },
-            ticks: { color: themeColors.text, font: { size: 10 } }
+            grid: { display: false },
+            ticks: {
+              color: themeColors.text,
+              font: { size: 10 },
+              autoSkip: true,
+              maxRotation: 0,
+              callback: function(value) {
+                // บังคับการแสดงผลผ่าน displayFormats
+                return this.getLabelForValue(value);
+              }
+            }
           },
           y: {
-            suggestedMax: cfg.threshold ? cfg.threshold * 1.2 : undefined,
-            grid: { color: themeColors.grid, borderDash: [4, 4] },
-            ticks: { color: themeColors.text, padding: 10 }
+            grid: { color: themeColors.grid, borderDash: [3, 3] },
+            ticks: { color: themeColors.text }
           }
         },
         interaction: { intersect: false, mode: "index" }
@@ -150,14 +149,14 @@ export default function MetricChart({ history, activeMetric, config, darkMode })
     });
 
     return () => chartInstance.current?.destroy();
-  }, [history, activeMetric, config, darkMode]);
+  }, [history, activeMetric, config, darkMode, timeRange]); // 💡 ใส่ timeRange เพื่อให้กราฟวาดใหม่เมื่อเปลี่ยนช่วงเวลา
 
   return (
     <div className="relative w-full h-full group">
       <canvas ref={chartRef}></canvas>
-      <button 
+      <button
         onClick={() => chartInstance.current?.resetZoom()}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-white/10 backdrop-blur-md text-[10px] font-bold py-1 px-3 rounded-lg border border-white/20 text-slate-400 hover:text-white transition-all z-10"
+        className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 bg-white/90 dark:bg-slate-800/90 shadow-md text-[10px] font-bold py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 transition-all z-10"
       >
         🔄 Reset Zoom
       </button>

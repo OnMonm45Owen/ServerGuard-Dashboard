@@ -16,12 +16,31 @@ export default function App() {
   const [date, setDate] = useState("");
   const [darkMode, setDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
-
-  // State สำหรับเก็บการแจ้งเตือนรวม (Global Alerts)
   const [globalAlerts, setGlobalAlerts] = useState([]);
 
-  // ดึงข้อมูลประวัติและแจ้งเตือนเฉพาะอุปกรณ์ (Local Alerts) สำหรับหน้า Analytics
+  // 💡 State สำหรับเก็บรายการแจ้งเตือนที่ถูกกดปิด (Dismissed)
+  const [dismissedAlerts, setDismissedAlerts] = useState([]);
+
   const { history, alerts: localAlerts } = useSensorData(activeDevice?.id, date, timeRange);
+
+  // 💡 ฟังก์ชันเช็คว่าอุปกรณ์มี Warning ที่ยังไม่ถูกกดปิดหรือไม่
+  const checkActiveWarning = (deviceId, latestLog) => {
+    if (!latestLog) return false;
+    return Object.keys(METRICS_CONFIG).some((m) => {
+      const conf = METRICS_CONFIG[m];
+      const val = latestLog[m];
+      if (!conf || val === null || conf.isMultiLine) return false;
+
+      const isExceeded = val > conf.threshold || (conf.thresholdMin && val < conf.thresholdMin);
+      if (isExceeded) {
+        // สร้าง Key เฉพาะสำหรับการแจ้งเตือนนี้
+        const alertKey = `${deviceId}-${latestLog.created_at}-${m}`;
+        // แสดงสถานะ Warning ตราบใดที่ Key นี้ยังไม่อยู่ในรายการที่ถูกกดปิด
+        return !dismissedAlerts.includes(alertKey);
+      }
+      return false;
+    });
+  };
 
   useEffect(() => {
     const fetchDevices = async () => {
@@ -38,35 +57,34 @@ export default function App() {
       }
 
       const initialAlerts = [];
+      const TIMEOUT_MS = 300 * 1000; // 5 นาที
 
       const devicesWithLogs = await Promise.all(
         devicesData.map(async (device) => {
           const { data: logs } = await supabase
             .from("sensor_logs")
-            .select("temperature, humidity, current_amp, noise_level, created_at")
+            .select("temperature, humidity, voltage, sound_db, created_at")
             .eq("device_id", device.id)
             .order("created_at", { ascending: false })
             .limit(1);
 
           const latestLog = logs && logs.length > 0 ? logs[0] : null;
+          let currentStatus = "offline"; 
 
-          // 💡 คำนวณสถานะอุปกรณ์ (Online / Warning / Offline)
-          let currentStatus = device.status;
-          if (latestLog && currentStatus === "online") {
-            const hasIssue = Object.keys(METRICS_CONFIG).some(
-              (m) => latestLog[m] > METRICS_CONFIG[m].threshold
-            );
-            if (hasIssue) {
-              currentStatus = "warning"; // เปลี่ยนสถานะเป็น warning ถ้ามีค่าเกินเกณฑ์
-              
-              // เก็บแจ้งเตือนเริ่มต้นสำหรับหน้า Home
+          if (latestLog) {
+            const lastSeen = new Date(latestLog.created_at).getTime();
+            const now = Date.now();
+            
+            if (now - lastSeen < TIMEOUT_MS) {
+              // 💡 เปลี่ยนสถานะโดยใช้ฟังก์ชันเช็ค Warning ค้างไว้
+              currentStatus = checkActiveWarning(device.id, latestLog) ? "warning" : "online";
+
               Object.keys(METRICS_CONFIG).forEach((m) => {
-                if (latestLog[m] > METRICS_CONFIG[m].threshold) {
+                const val = latestLog[m];
+                const conf = METRICS_CONFIG[m];
+                if (conf && !conf.isMultiLine && (val > conf.threshold || (conf.thresholdMin && val < conf.thresholdMin))) {
                   initialAlerts.push({
-                    metric: m,
-                    value: latestLog[m],
-                    time: latestLog.created_at,
-                    device_id: device.id,
+                    metric: m, value: val, time: latestLog.created_at, device_id: device.id,
                   });
                 }
               });
@@ -78,13 +96,13 @@ export default function App() {
             status: currentStatus,
             temperature: latestLog?.temperature ?? null,
             humidity: latestLog?.humidity ?? null,
-            current_amp: latestLog?.current_amp ?? null,
-            noise_level: latestLog?.noise_level ?? null,
+            voltage: latestLog?.voltage ?? null,
+            sound_db: latestLog?.sound_db ?? null,
+            last_seen: latestLog?.created_at ?? null 
           };
         })
       );
 
-      // เรียงและตั้งค่าแจ้งเตือนเริ่มต้น
       setGlobalAlerts(initialAlerts.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 15));
       setDevices(devicesWithLogs);
       setLoading(false);
@@ -92,101 +110,84 @@ export default function App() {
 
     fetchDevices();
 
-    // ดักฟังข้อมูล Real-time (Global Stream)
+    const timeoutCheck = setInterval(() => {
+      const TIMEOUT_MS = 300 * 1000;
+      const now = Date.now();
+      setDevices(prevDevices => prevDevices.map(d => {
+        if (!d.last_seen) return { ...d, status: "offline" };
+        const isExpired = now - new Date(d.last_seen).getTime() > TIMEOUT_MS;
+        return isExpired ? { ...d, status: "offline" } : d;
+      }));
+    }, 30000); 
+
     const globalChannel = supabase
       .channel("global-sensor-stream")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sensor_logs" },
-        (payload) => {
-          const log = payload.new;
-
-          setDevices((prevDevices) =>
-            prevDevices.map((d) => {
-              if (d.id === log.device_id) {
-                // เช็คว่าข้อมูลใหม่ทำให้ติดสถานะ Warning หรือไม่
-                const hasIssue = Object.keys(METRICS_CONFIG).some(
-                  (m) => log[m] > METRICS_CONFIG[m].threshold
-                );
-                return {
-                  ...d,
-                  status: hasIssue ? "warning" : "online",
-                  temperature: log.temperature,
-                  humidity: log.humidity,
-                  current_amp: log.current_amp,
-                  noise_level: log.noise_level,
-                };
-              }
-              return d;
-            })
-          );
-
-          // อัปเดตรายการแจ้งเตือนรวม
-          Object.keys(METRICS_CONFIG).forEach((m) => {
-            if (log[m] > METRICS_CONFIG[m].threshold) {
-              setGlobalAlerts((prev) => [
-                { metric: m, value: log[m], time: log.created_at, device_id: log.device_id },
-                ...prev,
-              ].slice(0, 15)); 
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sensor_logs" }, (payload) => {
+        const log = payload.new;
+        setDevices((prevDevices) =>
+          prevDevices.map((d) => {
+            if (d.id === log.device_id) {
+              // 💡 เช็คสถานะ Warning ค้างไว้เมื่อมีข้อมูลใหม่เข้ามา
+              const status = checkActiveWarning(log.device_id, log) ? "warning" : "online";
+              return {
+                ...d,
+                status: status,
+                temperature: log.temperature,
+                humidity: log.humidity,
+                voltage: log.voltage,
+                sound_db: log.sound_db,
+                last_seen: log.created_at
+              };
             }
-          });
-        }
-      )
+            return d;
+          })
+        );
+
+        Object.keys(METRICS_CONFIG).forEach((m) => {
+          const conf = METRICS_CONFIG[m];
+          if (conf && !conf.isMultiLine && (log[m] > conf.threshold || (conf.thresholdMin && log[m] < conf.thresholdMin))) {
+            setGlobalAlerts((prev) => [
+              { metric: m, value: log[m], time: log.created_at, device_id: log.device_id },
+              ...prev,
+            ].slice(0, 15));
+          }
+        });
+      })
       .subscribe();
 
-    return () => supabase.removeChannel(globalChannel);
-  }, []);
+    return () => {
+      supabase.removeChannel(globalChannel);
+      clearInterval(timeoutCheck);
+    };
+  }, [dismissedAlerts]); // 💡 ทำงานใหม่เมื่อมีการกดปิดแจ้งเตือน
 
-  const openAnalytics = (device) => {
-    setActiveDevice(device);
-    setView("analytics");
-  };
+  const openAnalytics = (device) => { setView("analytics"); setActiveDevice(device); };
+  const goHome = () => { setView("home"); setActiveDevice(null); };
 
-  const goHome = () => {
-    setView("home");
-    setActiveDevice(null);
-  };
-
-  // 💡 เลือกแจ้งเตือนที่จะส่งไปให้ Popup (หน้า Home แสดงทั้งหมด / หน้า Analytics แสดงเฉพาะของอุปกรณ์นั้น)
   const activeAlerts = view === "analytics" ? localAlerts : globalAlerts;
 
   return (
     <div className={darkMode ? "dark" : ""}>
-      {/* 💡 เปลี่ยนสีพื้นหลังโหมดปกติ: 
-         จากเดิม bg-white หรือ bg-gray-100 
-         เป็น bg-[#F0F2F5] (Slate Gray) หรือ bg-[#F4F7FA] (Soft Navy White)
-      */}
-      <div className="min-h-screen bg-[#F4F7FA] dark:bg-[#161D31] text-slate-800 dark:text-[#D0D2D6] transition-colors duration-300 font-sans">
-        
+      <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0F172A] text-slate-800 dark:text-[#D0D2D6] transition-colors duration-300 font-sans">
         <Navbar darkMode={darkMode} setDarkMode={setDarkMode} onHomeClick={goHome} />
-
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {view === "home" && (
-            <HomeView 
-              devices={devices} 
-              loading={loading} 
-              onNavigate={openAnalytics} 
-            />
-          )}
-
+          {view === "home" && <HomeView devices={devices} loading={loading} onNavigate={openAnalytics} />}
           {view === "analytics" && activeDevice && (
             <AnalyticsView
-              device={activeDevice}
-              history={history}
-              activeMetric={metric}
-              onMetricChange={setMetric}
-              timeRange={timeRange}
-              setTimeRange={setTimeRange}
-              selectedDate={date}
-              setSelectedDate={setDate}
-              alerts={localAlerts}
-              onBack={goHome}
-              darkMode={darkMode}
+              device={activeDevice} history={history} activeMetric={metric} onMetricChange={setMetric}
+              timeRange={timeRange} setTimeRange={setTimeRange} selectedDate={date} setSelectedDate={setDate}
+              alerts={localAlerts} onBack={goHome} darkMode={darkMode}
             />
           )}
         </main>
-
-        <AlertPopup alerts={activeAlerts} devices={devices} view={view} />
+        {/* 💡 ส่ง dismissedAlerts และฟังก์ชันเซ็ตค่าไปยัง AlertPopup */}
+        <AlertPopup 
+          alerts={activeAlerts} 
+          devices={devices} 
+          view={view} 
+          dismissedAlerts={dismissedAlerts}
+          setDismissedAlerts={setDismissedAlerts}
+        />
       </div>
     </div>
   );

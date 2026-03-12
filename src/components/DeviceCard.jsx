@@ -17,7 +17,7 @@ export default function DeviceCard({ device, onOpen }) {
           label: "Warning",
           color: "bg-amber-500",
           shadow: "shadow-amber-500/20",
-          animate: "animate-pulse" // 🚨 กะพริบเพื่อเตือนความผิดปกติ
+          animate: "animate-pulse" // กะพริบที่ป้ายสถานะ
         };
       default:
         return {
@@ -31,20 +31,35 @@ export default function DeviceCard({ device, onOpen }) {
 
   const status = getStatusDisplay();
 
-  // 💡 เช็คว่าค่านั้นๆ เกินขีดจำกัดหรือไม่
-  const isExceeded = (metric, value) => {
-    return value > METRICS_CONFIG[metric].threshold;
+  // 💡 เช็คว่าค่านั้นๆ ผิดปกติหรือไม่ (รองรับทั้ง Max และ Min threshold)
+  const isValueAlert = (metricKey, value) => {
+    if (value === null || value === undefined) return false;
+    const config = METRICS_CONFIG[metricKey];
+    if (!config) return false;
+
+    // เช็คค่าสูงสุด
+    if (config.threshold && value > config.threshold) return true;
+    // เช็คค่าต่ำสุด (เช่น Humidity เพื่อป้องกันไฟฟ้าสถิต)
+    if (config.thresholdMin && value < config.thresholdMin) return true;
+
+    return false;
   };
 
   return (
-    <div className={`bg-white dark:bg-[#283046] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/50 p-6 transition-all hover:shadow-xl dark:hover:bg-[#2F3854] border-t-4 ${device.status === 'warning' ? 'border-amber-500' : 'border-transparent'}`}>
-      
+    <div className={`bg-white dark:bg-[#283046] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/50 p-6 transition-all hover:shadow-xl dark:hover:bg-[#2F3854] border-t-4 transition-colors duration-300 ${
+      device.status === 'warning'
+        ? 'border-amber-500 animate-[pulse_2s_infinite]' // 💡 กะพริบขอบสีส้มเมื่อสถานะเป็น Warning
+        : device.status === 'online'
+          ? 'border-emerald-500'
+          : 'border-transparent'
+    }`}>
+
       <div className="flex justify-between items-start mb-6">
         <div>
           <h3 className="text-lg font-bold text-slate-700 dark:text-[#E0E2E7]">
             {device.name}
           </h3>
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Device ID: {device.id}</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Device ID: {device.id}</span>
         </div>
         <span
           className={`text-[10px] px-2.5 py-1 rounded-lg text-white font-black uppercase tracking-wider shadow-lg ${status.color} ${status.shadow} ${status.animate}`}
@@ -54,18 +69,24 @@ export default function DeviceCard({ device, onOpen }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
-        {/* แสดงผลเซ็นเซอร์ 4 ตัว */}
-        {Object.keys(METRICS_CONFIG).map((key) => (
-          <div key={key} className="bg-slate-50 dark:bg-[#161D31]/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/30">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">
-              {key === 'current_amp' ? '⚡ ' : key === 'temperature' ? '🌡️ ' : key === 'humidity' ? '💧 ' : '🔊 '}
-              {METRICS_CONFIG[key].label}
-            </span>
-            <div className={`text-lg font-black mt-0.5 ${isExceeded(key, device[key]) ? 'text-rose-500' : 'text-slate-700 dark:text-[#D0D2D6]'}`}>
-              {device[key] ?? "--"} <span className="text-xs font-medium opacity-60">{METRICS_CONFIG[key].unit}</span>
+        {/* แสดงผลเซ็นเซอร์หลักตาม config */}
+        {Object.keys(METRICS_CONFIG).filter(key => !METRICS_CONFIG[key].isMultiLine).map((key) => {
+          const config = METRICS_CONFIG[key];
+          const hasAlert = isValueAlert(key, device[key]);
+
+          return (
+            <div key={key} className="bg-[#F8FAFC] dark:bg-[#161D31]/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/30 transition-colors">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }}></span>
+                {config.label}
+              </span>
+              <div className={`text-lg font-black mt-0.5 ${hasAlert ? 'text-rose-500 animate-pulse' : 'text-slate-700 dark:text-[#D0D2D6]'}`}>
+                {device[key] !== null ? device[key] : "--"}
+                <span className="text-xs font-medium opacity-60 ml-1">{config.unit}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

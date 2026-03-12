@@ -5,19 +5,20 @@ import TimeRangeSelector from "../components/TimeRangeSelector";
 import AlertPanel from "../components/AlertPanel";
 import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-export default function AnalyticsView({
+const AnalyticsView = ({
   device,
   history,
-  activeMetric,
-  onMetricChange,
-  timeRange,
-  setTimeRange,
+  activeMetric,    // รับค่าจาก App (คือ metric)
+  onMetricChange,  // รับฟังก์ชันจาก App (คือ setMetric)
+  timeRange,       // รับค่าจาก App
+  setTimeRange,    // รับฟังก์ชันจาก App
   selectedDate,
   setSelectedDate,
-  alerts,
+  alerts,          // รับแจ้งเตือนเฉพาะอุปกรณ์
   onBack,
   darkMode
-}) {
+  
+}) => {
   return (
     <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-500 pb-20">
       {/* ส่วนหัวและปุ่มย้อนกลับ */}
@@ -34,26 +35,27 @@ export default function AnalyticsView({
           <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">
             {device.name}
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Real-time Performance Analysis</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium tracking-wide">Real-time Performance Analysis</p>
         </div>
         
-        <div className="bg-white dark:bg-[#283046] p-1.5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/50">
-          <TimeRangeSelector
-            range={timeRange}
-            setRange={setTimeRange}
-            date={selectedDate}
-            setDate={setSelectedDate}
+        {/* แก้ไข: ส่วนควบคุมช่วงเวลา */}
+        <div className="flex flex-wrap gap-3">
+          <TimeRangeSelector 
+            timeRange={timeRange} 
+            setTimeRange={setTimeRange} 
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
           />
         </div>
       </div>
 
       {/* 📊 ส่วนแสดงผลกราฟ */}
-      <div className="bg-white dark:bg-[#283046] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700/50 p-6 mb-6 transition-colors">
+      <div className="bg-white dark:bg-[#283046] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700/50 p-6 mb-8 transition-colors">
         <div className="flex justify-center items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: METRICS_CONFIG[activeMetric].color }}></div>
-            <span className="font-bold text-slate-700 dark:text-[#D0D2D6] uppercase tracking-widest text-xs">
-              {METRICS_CONFIG[activeMetric].label} Monitoring
+          <div className="flex items-center gap-3 bg-slate-50 dark:bg-[#161D31] px-4 py-2 rounded-full border border-slate-100 dark:border-slate-700">
+            <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: METRICS_CONFIG[activeMetric]?.color }}></div>
+            <span className="font-bold text-slate-700 dark:text-[#D0D2D6] uppercase tracking-widest text-[10px]">
+              {METRICS_CONFIG[activeMetric]?.label} Monitoring
             </span>
           </div>
         </div>
@@ -63,39 +65,42 @@ export default function AnalyticsView({
             history={history}
             activeMetric={activeMetric}
             config={METRICS_CONFIG}
-            range={timeRange}
+            timeRange={timeRange}
             darkMode={darkMode}
           />
         </div>
       </div>
 
-      {/* 🔘 Select Metric จัดให้อยู่กึ่งกลางใต้กราฟ */}
+      {/* 🔘 Select Metric ส่วนเลือกตัวแปรที่ต้องการดู */}
       <div className="flex flex-col items-center mb-12">
         <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mb-4">
           Select Analysis Metric
         </h3>
-        <div className="flex flex-wrap justify-center gap-4 w-full max-w-2xl">
+        <div className="flex flex-wrap justify-center gap-4 w-full">
+          {/* แก้ไข: ตรวจสอบให้แน่ใจว่าใช้ onMetricChange ตามชื่อที่รับมาจาก Props */}
           <MetricSelector
             activeMetric={activeMetric}
-            onChange={onMetricChange}
+            onMetricChange={onMetricChange}
           />
         </div>
       </div>
 
-      {/* 📜 Alert History ย้ายมาไว้ด้านล่างสุดแบบเต็มความกว้าง */}
-      <div className="mt-10">
-        <div className="flex justify-between items-center mb-4 px-2">
-          <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+      {/* 📜 Alert History ประวัติการแจ้งเตือน */}
+      <div className="mt-10 border-t border-slate-200 dark:border-slate-800 pt-10">
+        <div className="flex justify-between items-center mb-6 px-2">
+          <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
             Device Alert History
           </h3>
-          <span className="text-xs font-bold text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full">
-            Recent {alerts.length} Incidents
+          <span className="text-[10px] font-bold text-blue-600 dark:text-indigo-400 bg-blue-50 dark:bg-indigo-500/10 px-3 py-1 rounded-full border border-blue-100 dark:border-indigo-500/20">
+            Recent {alerts?.length || 0} Incidents
           </span>
         </div>
-        <div className="bg-white dark:bg-[#283046] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="overflow-hidden">
           <AlertPanel alerts={alerts} />
         </div>
       </div>
     </div>
   );
 }
+
+export default AnalyticsView;
