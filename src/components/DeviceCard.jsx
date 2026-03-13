@@ -114,16 +114,17 @@ export default function DeviceCard({ device, onOpen }) {
       <button
         onClick={() => onOpen(device)}
         className="
-    w-full 
-    bg-slate-900 dark:bg-indigo-600 
-    hover:bg-blue-600 dark:hover:bg-indigo-500 
-    text-white py-4 rounded-xl 
-    font-black text-sm uppercase tracking-widest 
-    transition-all duration-200
-    shadow-[0_4px_0_0_rgba(0,0,0,1)] dark:shadow-[0_4px_0_0_rgba(67,56,202,1)]
-    active:translate-y-1 active:shadow-none
-    border-2 border-slate-900 dark:border-indigo-400/50
-  "
+        mt-auto
+        w-full 
+        bg-slate-900 dark:bg-indigo-600 
+        hover:bg-blue-600 dark:hover:bg-indigo-500 
+        text-white py-4 rounded-xl 
+        font-black text-sm uppercase tracking-widest 
+        transition-all duration-200
+        shadow-[0_4px_0_0_rgba(0,0,0,1)] dark:shadow-[0_4px_0_0_rgba(67,56,202,1)]
+        active:translate-y-1 active:shadow-none
+        border-2 border-slate-900 dark:border-indigo-400/50
+        "
       >
         View Analytics
       </button>
