@@ -3,6 +3,20 @@
 @tailwind components;
 @tailwind utilities;
 /* stylelint-enable at-rule-no-unknown */
-body{
-font-family:sans-serif;
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* เน้นเส้นขอบ Focus ให้ชัดเจน */
+:focus {
+  outline: 3px solid rgba(59, 130, 246, 0.5);
+}
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(200%) contrast(100%);
+  cursor: pointer;
 }

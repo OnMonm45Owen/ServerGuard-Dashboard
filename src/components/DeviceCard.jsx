@@ -2,27 +2,26 @@ import React from "react";
 import { METRICS_CONFIG } from "../utils/metricsConfig";
 
 export default function DeviceCard({ device, onOpen }) {
-  // 💡 กำหนดการแสดงผลตามสถานะของอุปกรณ์ พร้อมเงา (Shadow) และสีตามธีมใหม่
   const getStatusDisplay = () => {
     switch (device.status) {
       case "online":
         return {
           label: "Online",
-          color: "bg-emerald-500",
-          shadow: "shadow-emerald-500/20",
+          color: "bg-emerald-600",
+          shadow: "shadow-emerald-500/30",
           animate: ""
         };
       case "warning":
         return {
           label: "Warning",
           color: "bg-amber-500",
-          shadow: "shadow-amber-500/20",
-          animate: "animate-pulse" // กะพริบที่ป้ายสถานะ
+          shadow: "shadow-amber-500/30",
+          animate: "animate-pulse"
         };
       default:
         return {
           label: "Offline",
-          color: "bg-slate-400",
+          color: "bg-slate-500",
           shadow: "",
           animate: ""
         };
@@ -31,58 +30,81 @@ export default function DeviceCard({ device, onOpen }) {
 
   const status = getStatusDisplay();
 
-  // 💡 เช็คว่าค่านั้นๆ ผิดปกติหรือไม่ (รองรับทั้ง Max และ Min threshold)
   const isValueAlert = (metricKey, value) => {
     if (value === null || value === undefined) return false;
     const config = METRICS_CONFIG[metricKey];
     if (!config) return false;
-
-    // เช็คค่าสูงสุด
     if (config.threshold && value > config.threshold) return true;
-    // เช็คค่าต่ำสุด (เช่น Humidity เพื่อป้องกันไฟฟ้าสถิต)
     if (config.thresholdMin && value < config.thresholdMin) return true;
-
     return false;
   };
 
   return (
-    <div className={`bg-white dark:bg-[#283046] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/50 p-6 transition-all hover:shadow-xl dark:hover:bg-[#2F3854] border-t-4 transition-colors duration-300 ${
-      device.status === 'warning'
-        ? 'border-amber-500 animate-[pulse_2s_infinite]' // 💡 กะพริบขอบสีส้มเมื่อสถานะเป็น Warning
+    <div className={`
+      /* 💡 พื้นหลัง: ปรับให้ขาวสนิทในโหมดสว่าง และเข้มชัดในโหมดมืด */
+      bg-white dark:bg-[#1e293b] 
+      
+      /* 💡 เส้นขอบหลัก: ปรับเป็น border-2 เพื่อความหนา และใช้สีที่ตัดกันชัดเจน */
+      border-2 border-slate-300 dark:border-slate-600 
+      
+      rounded-2xl p-6 transition-all duration-300
+      
+      /* 💡 เงา: เพิ่มความลึกให้ Card ลอยเด่นขึ้น */
+      shadow-md hover:shadow-2xl hover:border-blue-400 dark:hover:border-indigo-400
+      
+      /* ขอบบนแสดงสถานะ */
+      border-t-[6px] ${device.status === 'warning'
+        ? 'border-amber-500 animate-[pulse_2s_infinite]'
         : device.status === 'online'
           ? 'border-emerald-500'
-          : 'border-transparent'
-    }`}>
+          : 'border-slate-400'
+      }
+    `}>
 
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h3 className="text-lg font-bold text-slate-700 dark:text-[#E0E2E7]">
+          {/* 💡 ชื่ออุปกรณ์: ปรับสีให้เข้มที่สุด (Slate-900) เพื่อความชัดเจน */}
+          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">
             {device.name}
           </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Device ID: {device.id}</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">
+            ID: {device.id}
+          </span>
         </div>
         <span
-          className={`text-[10px] px-2.5 py-1 rounded-lg text-white font-black uppercase tracking-wider shadow-lg ${status.color} ${status.shadow} ${status.animate}`}
+          className={`text-xs px-3 py-1.5 rounded-lg text-white font-black uppercase tracking-wider shadow-md ${status.color} ${status.shadow} ${status.animate}`}
         >
           {status.label}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
-        {/* แสดงผลเซ็นเซอร์หลักตาม config */}
         {Object.keys(METRICS_CONFIG).filter(key => !METRICS_CONFIG[key].isMultiLine).map((key) => {
           const config = METRICS_CONFIG[key];
           const hasAlert = isValueAlert(key, device[key]);
 
+          // 💡 ฟังก์ชันจัดการตัวเลขเพื่อป้องกันการแสดงผลเกินกรอบ
+          const formatValue = (val) => {
+            if (val === null || val === undefined) return "--";
+            if (typeof val === 'number') {
+              // จำกัดทศนิยมให้แสดงเพียง 1 ตำแหน่งสำหรับทุก Metric ที่เป็นตัวเลข
+              // ซึ่งเพียงพอสำหรับการอ่านค่า Voltage ที่ไม่ให้ยาวเกินกรอบแล้วครับ
+              return val.toFixed(1);
+            }
+            return val;
+          };
+
           return (
-            <div key={key} className="bg-[#F8FAFC] dark:bg-[#161D31]/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/30 transition-colors">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }}></span>
+            <div key={key} className="bg-slate-50 dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-700 p-3 rounded-xl">
+              <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase flex items-center gap-1.5 mb-1">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: config.color }}></span>
                 {config.label}
               </span>
-              <div className={`text-lg font-black mt-0.5 ${hasAlert ? 'text-rose-500 animate-pulse' : 'text-slate-700 dark:text-[#D0D2D6]'}`}>
-                {device[key] !== null ? device[key] : "--"}
-                <span className="text-xs font-medium opacity-60 ml-1">{config.unit}</span>
+
+              {/* 💡 เรียกใช้ formatValue(device[key]) แทนการแสดงผลค่าตรงๆ */}
+              <div className={`text-2xl font-black ${hasAlert ? 'text-rose-600 animate-bounce' : 'text-slate-900 dark:text-slate-100'}`}>
+                {formatValue(device[key])}
+                <span className="text-sm font-bold opacity-70 ml-1">{config.unit}</span>
               </div>
             </div>
           );
@@ -91,7 +113,17 @@ export default function DeviceCard({ device, onOpen }) {
 
       <button
         onClick={() => onOpen(device)}
-        className="w-full bg-blue-600 hover:bg-blue-500 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/25 dark:shadow-indigo-500/20 active:scale-95"
+        className="
+    w-full 
+    bg-slate-900 dark:bg-indigo-600 
+    hover:bg-blue-600 dark:hover:bg-indigo-500 
+    text-white py-4 rounded-xl 
+    font-black text-sm uppercase tracking-widest 
+    transition-all duration-200
+    shadow-[0_4px_0_0_rgba(0,0,0,1)] dark:shadow-[0_4px_0_0_rgba(67,56,202,1)]
+    active:translate-y-1 active:shadow-none
+    border-2 border-slate-900 dark:border-indigo-400/50
+  "
       >
         View Analytics
       </button>

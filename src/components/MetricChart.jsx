@@ -10,113 +10,165 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
+  // 💡 ฟังก์ชันหาค่าเฉลี่ย และเช็ค Alert (รองรับข้อมูลสรุป)
+  const aggregateData = (data, pointsPerDay, cfg) => {
+    if (!data || data.length === 0) return [];
+    const intervalMs = (24 * 60 * 60 * 1000) / pointsPerDay;
+    const groups = {};
+
+    data.forEach(item => {
+      const time = new Date(item.x).getTime();
+      const groupKey = Math.floor(time / intervalMs) * intervalMs;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = { sum: 0, count: 0, hasAlert: false };
+      }
+      
+      groups[groupKey].sum += item.y;
+      groups[groupKey].count += 1;
+      
+      // ถ้ามีจุดใดจุดหนึ่งในกลุ่มเกินเกณฑ์ ให้ Flag ว่ามี Alert
+      if (item.y > cfg.threshold || (cfg.thresholdMin && item.y < cfg.thresholdMin)) {
+        groups[groupKey].hasAlert = true;
+      }
+    });
+
+    return Object.keys(groups).map(key => ({
+      x: new Date(parseInt(key)),
+      y: Number((groups[key].sum / groups[key].count).toFixed(2)),
+      isAlert: groups[key].hasAlert
+    })).sort((a, b) => a.x - b.x);
+  };
+
   useEffect(() => {
     if (!chartRef.current) return;
     if (chartInstance.current) chartInstance.current.destroy();
 
     const ctx = chartRef.current.getContext("2d");
     const cfg = config[activeMetric];
+    
+    // ป้องกัน Error หากหา Config ไม่เจอ
+    if (!cfg) return;
 
-    // ตั้งค่าสีตามโหมด (ปรับให้ Contrast ต่ำลงเพื่อถนอมสายตา)
-    const themeColors = {
-      grid: darkMode ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
-      text: darkMode ? "#94a3b8" : "#64748b",
-      tooltipBg: darkMode ? "#161D31" : "#1e293b",
-      tooltipBorder: darkMode ? "#3b4353" : "#e2e8f0"
-    };
-
-    // 💡 ฟังก์ชันเลือกรูปแบบเวลาใต้กราฟแยกตามช่วงเวลา
-    const getDisplayFormat = () => {
-      if (timeRange === '24h') {
-        return {
-          hour: 'HH:mm',     // เช่น 13:25
-          minute: 'HH:mm',
-          second: 'HH:mm:ss'
-        };
-      } else if (timeRange === '7d') {
-        return {
-          day: 'eee HH:mm',  // เช่น จ. 10:00
-          hour: 'eee HH:mm'
-        };
-      } else { // 30d
-        return {
-          day: 'd MMM',      // เช่น 13 มี.ค.
-          month: 'd MMM'
-        };
-      }
-    };
-
-    // สร้าง Gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     const baseColor = cfg?.color || "#3b82f6";
-    gradient.addColorStop(0, darkMode ? `${baseColor}33` : `${baseColor}4D`);
+
+    // 1. ข้อมูลแบบละเอียด
+    const detailedData = history.map(log => ({
+      x: new Date(log.created_at),
+      y: log[activeMetric],
+      isAlert: log[activeMetric] > cfg.threshold || (cfg.thresholdMin && log[activeMetric] < cfg.thresholdMin)
+    })).sort((a, b) => a.x - b.x);
+
+    // 2. ข้อมูลแบบสรุปตามเงื่อนไข (7 วัน / 30 วัน)
+    let aggregatedData = detailedData;
+    let thresholdHours = 0; 
+
+    if (timeRange === '7d') {
+      aggregatedData = aggregateData(detailedData, 8, cfg);
+      thresholdHours = 24; 
+    } else if (timeRange === '30d') {
+      aggregatedData = aggregateData(detailedData, 4, cfg);
+      thresholdHours = 72; 
+    }
+
+    // 💡 3. ข้อมูลสำหรับเส้น Limit (แนวนอน)
+    const limitData = aggregatedData.length > 0 ? [
+      { x: aggregatedData[0].x, y: cfg.threshold },
+      { x: aggregatedData[aggregatedData.length - 1].x, y: cfg.threshold }
+    ] : [];
+
+    const themeColors = {
+      grid: darkMode ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+      text: darkMode ? "#cbd5e1" : "#1e293b",
+      tooltipBg: darkMode ? "#0f172a" : "#1e293b",
+    };
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, darkMode ? `${baseColor}44` : `${baseColor}66`);
     gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-    const chartData = history
-      .map((log) => ({
-        x: new Date(log.created_at),
-        y: log[activeMetric],
-        isAlert: log[activeMetric] > cfg?.threshold || (cfg?.thresholdMin && log[activeMetric] < cfg?.thresholdMin)
-      }))
-      .sort((a, b) => a.x - b.x);
-
-    const datasets = [
-      {
-        label: cfg?.label,
-        data: chartData,
-        borderColor: baseColor,
-        backgroundColor: gradient,
-        fill: true,
-        tension: 0.3,
-        borderWidth: 2,
-        pointRadius: chartData.map(d => d.isAlert ? 5 : 0),
-        pointHoverRadius: 7,
-        pointBackgroundColor: chartData.map(d => d.isAlert ? "#ef4444" : baseColor),
-        pointBorderColor: "#fff",
-        pointBorderWidth: 2,
-      },
-      {
-        label: "Limit",
-        data: chartData.map((d) => ({ x: d.x, y: cfg?.threshold })),
-        borderColor: "#ef4444",
-        borderDash: [6, 4],
-        borderWidth: 1.5,
-        pointRadius: 0,
-        fill: false,
-      }
-    ];
 
     chartInstance.current = new Chart(ctx, {
       type: "line",
-      data: { datasets },
+      data: {
+        datasets: [
+          {
+            label: `${cfg?.label} (${cfg?.unit})`,
+            data: aggregatedData,
+            borderColor: baseColor,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            borderWidth: 3, // เส้นหนาชัดเจน
+            pointRadius: (ctx) => (ctx.raw?.isAlert ? 6 : 0),
+            pointHoverRadius: 8,
+            pointBackgroundColor: "#ef4444",
+            pointBorderColor: "#fff",
+            pointBorderWidth: 2,
+            zIndex: 2
+          },
+          {
+            label: `Limit (${cfg.threshold}${cfg.unit})`,
+            data: limitData,
+            borderColor: "#ef4444",
+            borderWidth: 2,
+            borderDash: [6, 6], // เส้นประ
+            pointRadius: 0,
+            fill: false,
+            zIndex: 1
+          }
+        ]
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 500 },
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: {
+              color: themeColors.text,
+              font: { weight: '900', size: 11 },
+              usePointStyle: true,
+              boxWidth: 8
+            }
+          },
           zoom: {
             pan: { enabled: true, mode: "x" },
-            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" }
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: "x",
+              onZoomComplete: ({ chart }) => {
+                const { min, max } = chart.scales.x;
+                const visibleHours = (max - min) / (1000 * 60 * 60);
+                
+                const targetData = (timeRange !== '24h' && visibleHours < thresholdHours) 
+                  ? detailedData 
+                  : aggregatedData;
+
+                if (chart.data.datasets[0].data !== targetData) {
+                  chart.data.datasets[0].data = targetData;
+                  // อัปเดตเส้น Limit ให้ยาวตามข้อมูลที่เปลี่ยน
+                  chart.data.datasets[1].data = [
+                    { x: targetData[0].x, y: cfg.threshold },
+                    { x: targetData[targetData.length - 1].x, y: cfg.threshold }
+                  ];
+                  chart.update('none');
+                }
+              }
+            }
           },
           tooltip: {
             backgroundColor: themeColors.tooltipBg,
-            borderColor: themeColors.tooltipBorder,
-            borderWidth: 1,
-            cornerRadius: 12,
+            titleFont: { weight: 'bold' },
             padding: 12,
+            cornerRadius: 8,
             callbacks: {
-              title: (items) => {
-                const date = new Date(items[0].raw.x);
-                return date.toLocaleString('th-TH', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  day: 'numeric',
-                  month: 'short',
-                  hour12: false // 💡 บังคับ 24 ชม. ใน Tooltip
-                });
-              },
-              label: (context) => ` ${context.dataset.label}: ${context.raw.y} ${cfg?.unit}`
+              title: (items) => new Date(items[0].raw.x).toLocaleString('en-GB', {
+                hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', hour12: false
+              }),
+              label: (context) => ` ${context.dataset.label}: ${context.raw.y}`
             }
           }
         },
@@ -124,24 +176,25 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
           x: {
             type: "time",
             adapters: { date: { locale: th } },
-            time: {
-              displayFormats: getDisplayFormat() // 💡 ใช้ฟังก์ชันแยกรูปแบบตามช่วงเวลา
-            },
             grid: { display: false },
             ticks: {
               color: themeColors.text,
-              font: { size: 10 },
+              font: { weight: 'bold', size: 10 },
               autoSkip: true,
               maxRotation: 0,
               callback: function(value) {
-                // บังคับการแสดงผลผ่าน displayFormats
-                return this.getLabelForValue(value);
+                const d = new Date(value);
+                if (timeRange === '24h') return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
               }
             }
           },
-          y: {
-            grid: { color: themeColors.grid, borderDash: [3, 3] },
-            ticks: { color: themeColors.text }
+          y: { 
+            grid: { color: themeColors.grid, borderDash: [3, 3] }, 
+            ticks: { 
+              color: themeColors.text,
+              font: { weight: 'bold' } 
+            } 
           }
         },
         interaction: { intersect: false, mode: "index" }
@@ -149,16 +202,19 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
     });
 
     return () => chartInstance.current?.destroy();
-  }, [history, activeMetric, config, darkMode, timeRange]); // 💡 ใส่ timeRange เพื่อให้กราฟวาดใหม่เมื่อเปลี่ยนช่วงเวลา
+  }, [history, activeMetric, config, darkMode, timeRange]);
 
   return (
-    <div className="relative w-full h-full group">
+    <div className="relative w-full h-full group bg-slate-50/50 dark:bg-transparent rounded-2xl p-2 border-2 border-transparent">
       <canvas ref={chartRef}></canvas>
       <button
-        onClick={() => chartInstance.current?.resetZoom()}
-        className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 bg-white/90 dark:bg-slate-800/90 shadow-md text-[10px] font-bold py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 transition-all z-10"
+        onClick={() => {
+          chartInstance.current?.resetZoom();
+          chartInstance.current.update();
+        }}
+        className="absolute top-10 right-4 opacity-0 group-hover:opacity-100 bg-slate-900 dark:bg-indigo-600 text-white text-[10px] font-black py-2 px-4 rounded-xl shadow-xl transition-all z-10 hover:scale-110 active:scale-95 border-2 border-white/20 uppercase"
       >
-        🔄 Reset Zoom
+        🔄 Reset View
       </button>
     </div>
   );
