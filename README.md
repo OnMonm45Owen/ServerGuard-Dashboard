@@ -1,16 +1,66 @@
-# React + Vite
+# 🛡️ ServerGuard Monitoring System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ระบบตรวจวัดสภาพแวดล้อมภายในห้องเซิร์ฟเวอร์แบบ Real-time โดยใช้ ESP32 และ Dashboard จัดการข้อมูล
 
-Currently, two official plugins are available:
+## 🚀 Overview
+**ServerGuard** คือโปรเจกต์ IoT ที่ช่วยเฝ้าระวังความปลอดภัยของอุปกรณ์เซิร์ฟเวอร์ โดยเน้นการวัดอุณหภูมิ, ความชื้น, แรงดันไฟฟ้า และตรวจจับเสียงผิดปกติ เพื่อป้องกันความเสียหายก่อนเกิดเหตุ
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Key Features
+* **Real-time Dashboard:** แสดงผลข้อมูลผ่าน React และ Tailwind CSS
+* **Multi-Sensor Support:** * 🌡️ **BME280:** วัดอุณหภูมิและความชื้นแม่นยำสูง
+    * ⚡ **ZMPT101B:** ตรวจวัดแรงดันไฟฟ้า (Voltage)
+    * 🎤 **INMP441:** ตรวจจับระดับเสียงในห้อง
+* **Cloud Integration:** บันทึกข้อมูลและจัดการ Auth ด้วย **Supabase**
+* **Dark/Light Mode:** รองรับการปรับเปลี่ยนธีมตามความต้องการ
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Tech Stack
 
-## Expanding the ESLint configuration
+### Frontend
+* **Framework:** React + Vite
+* **Styling:** Tailwind CSS
+* **Icons:** Lucide React / React Icons
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Backend & Database
+* **Database:** Supabase (PostgreSQL)
+* **Real-time:** Supabase Realtime Subscriptions
+
+### Hardware (IoT)
+* **Microcontroller:** ESP32
+* **Communication:** WiFi (HTTP / MQTT / Supabase REST API)
+
+---
+
+## 📸 Screenshots
+| Desktop Dashboard | Mobile View |
+|---|---|
+| ![Dashboard Link](https://via.placeholder.com/400x250) | ![Mobile Link](https://via.placeholder.com/200x400) |
+
+---
+
+## ⚙️ Installation & Setup
+
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/OnMonm45Owen/ServerGuard-Dashboard.git](https://github.com/OnMonm45Owen/ServerGuard-Dashboard.git)
+    cd serverguard-dashboard
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Environment Variables:** สร้างไฟล์ `.env` และใส่ค่าของคุณ:
+    ```env
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+4.  **Run Development Server:**
+    ```bash
+    npm run dev
+    ```
+
+---
+
+## 📝 Authors
+* **Pinmanat Paiboon** - *Lead Developer* - [OnMonm45Owen](https://github.com/OnMonm45Owen)
