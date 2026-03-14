@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_ANON_KEY
 )
 
-const devices = ['DEV_01', 'DEV_02', 'DEV_03']
+const devices = ['DEV_01', 'DEV_02', ]
 
 // state ของ device
 const state = {}
@@ -14,8 +14,8 @@ const state = {}
 devices.forEach(d => {
   state[d] = {
     load: Math.random() * 40,
-    temp: 25,
-    humidity: 50,
+    temp: 28,
+    humidity: 70,
     voltage: 220,
     sound: 45,
     heatWave: false,
@@ -61,13 +61,13 @@ setInterval(async () => {
   if (Math.random() < 0.05) s.voltageDrop = false
 
   if (s.voltageDrop) {
-    s.voltage = drift(s.voltage, 150, 180, 3)
+    s.voltage = drift(s.voltage, 170, 190, 1)
   } else {
     s.voltage = drift(s.voltage, 215, 230, 1)
   }
 
   // humidity drift
-  s.humidity = drift(s.humidity, 40, 70, 1.5)
+  s.humidity = drift(s.humidity, 40, 90, 1.5)
 
   const payload = {
 
