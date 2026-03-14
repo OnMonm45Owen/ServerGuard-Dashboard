@@ -2,7 +2,8 @@
 import React from "react";
 import DeviceCard from "../components/DeviceCard";
 
-export default function HomeView({ devices, loading, onNavigate }) {
+// 💡 เพิ่ม onPing และ pingResults เข้ามาใน Props
+export default function HomeView({ devices, loading, onNavigate, onPing, pingResults }) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -38,6 +39,9 @@ export default function HomeView({ devices, loading, onNavigate }) {
               key={device.id} 
               device={device} 
               onOpen={onNavigate} 
+              // 💡 ส่งต่อฟังก์ชันและผลลัพธ์การ Ping ไปยังแต่ละ Card
+              onPing={onPing}
+              pingResult={pingResults ? pingResults[device.id] : null}
             />
           ))
         ) : (
@@ -50,7 +54,7 @@ export default function HomeView({ devices, loading, onNavigate }) {
         )}
       </div>
 
-      {/* 💡 ส่วนสถิติย่อด้านล่าง (Optional) เพื่อเพิ่มความเต็มของหน้าจอ */}
+      {/* 💡 ส่วนสถิติย่อด้านล่าง */}
       <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl flex justify-between items-center">
           <span className="font-black text-xs text-slate-500 uppercase">Total Devices</span>
@@ -62,7 +66,7 @@ export default function HomeView({ devices, loading, onNavigate }) {
         </div>
         <div className="p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl flex justify-between items-center">
           <span className="font-black text-xs text-slate-500 uppercase">Alerts</span>
-          <span className="text-2xl font-black text-rose-600">{devices.filter(d => d.status === 'warning').length}</span>
+          <span className="text-2xl font-black text-rose-600">{devices.filter(d => d.status === 'warning' || d.status === 'offline').length}</span>
         </div>
       </div>
     </div>
