@@ -57,23 +57,37 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
       }
     `}>
 
-      {/* Header: Name & Status */}
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex-1">
+      {/* 💡 Header: ปรับปรุงการจัดการพื้นที่ใหม่ */}
+      <div className="flex justify-between items-start mb-4 gap-3"> {/* เพิ่ม gap เพื่อกันกระแทก */}
+        
+        {/* ส่วนชื่อเครื่อง: เพิ่ม min-w-0 เพื่อให้ truncate ทำงานได้จริง */}
+        <div className="flex-1 min-w-0"> 
           <div className="flex items-center gap-2 mb-1">
-             <span className="bg-slate-900 text-white dark:bg-indigo-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">{device.id}</span>
-             <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter truncate">{device.name}</h3>
+             {/* shrink-0 เพื่อไม่ให้ ID ถูกบีบจนแบน */}
+             <span className="shrink-0 bg-slate-900 text-white dark:bg-indigo-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">
+               {device.id}
+             </span>
+             {/* truncate จะทำงานเมื่อพื้นที่ไม่พอ */}
+             <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter truncate leading-tight">
+               {device.name}
+             </h3>
           </div>
+          
           <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest flex items-center gap-1">
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest flex items-center gap-1 truncate">
               📍 {device.location || "Unknown Location"}
             </span>
-            <span className="text-[9px] text-slate-400 font-bold tracking-tighter">
+            <span className="text-[9px] text-slate-400 font-bold tracking-tighter truncate">
               IP: {device.ip_address || "NO CONFIG"}
             </span>
           </div>
         </div>
-        <span className={`text-[9px] px-3 py-1.5 rounded-xl text-white font-black uppercase tracking-wider shadow-lg ${status.color} ${status.shadow} ${status.animate}`}>
+
+        {/* ป้ายสถานะ: เพิ่ม shrink-0 และ whitespace-nowrap เพื่อไม่ให้หลุดกรอบ */}
+        <span className={`
+          shrink-0 whitespace-nowrap text-[9px] px-3 py-1.5 rounded-xl text-white font-black uppercase tracking-wider shadow-lg 
+          ${status.color} ${status.shadow} ${status.animate}
+        `}>
           {status.label}
         </span>
       </div>
