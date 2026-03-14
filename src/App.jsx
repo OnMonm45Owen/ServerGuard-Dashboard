@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import Navbar from "./components/Navbar";
 import HomeView from "./views/HomeView";
@@ -5,6 +6,7 @@ import AnalyticsView from "./views/AnalyticsView";
 import SettingsView from "./views/SettingsView";
 import LoginView from "./views/LoginView";
 import AlertPopup from "./components/AlertPopup";
+import AddDeviceModal from "./components/AddDeviceModal"; // 💡 นำเข้าปอบอับเพิ่มเครื่องใหม่
 import useSensorData from "./hooks/useSensorData";
 import { supabase } from "./lib/supabase";
 import { METRICS_CONFIG } from "./utils/metricsConfig";
@@ -23,7 +25,10 @@ export default function App() {
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
   const [pingResults, setPingResults] = useState({});
 
-  // 1. 💡 ใช้ useCallback เพื่อให้ฟังก์ชันไม่ถูกสร้างใหม่ทุกครั้งที่เรนเดอร์ (แก้ Missing Dependency)
+  // 💡 State สำหรับควบคุมการเปิด/ปิด ปอบอับ
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // 1. ฟังก์ชันตรวจสอบการแจ้งเตือน
   const checkActiveWarning = useCallback((deviceId, latestLog) => {
     if (!latestLog) return false;
     return Object.keys(METRICS_CONFIG).some((m) => {
@@ -40,22 +45,31 @@ export default function App() {
     });
   }, [dismissedAlerts]);
 
-  const calculateDeviceStatus = useCallback((deviceId, latestLog) => {
-    const TIMEOUT_MS = 300 * 1000; // 5 นาที
-    if (!latestLog) return pingResults[deviceId]?.success ? "standby" : "offline";
+  // 2. ฟังก์ชันคำนวณสถานะอุปกรณ์
+  // src/App.jsx
 
-    const lastSeen = new Date(latestLog.created_at).getTime();
-    const isActive = (Date.now() - lastSeen) < TIMEOUT_MS;
+const calculateDeviceStatus = useCallback((deviceId, latestLog) => {
+    const TIMEOUT_MS = 300 * 1000; 
+    const ping = pingResults[deviceId];
+    
+    const lastSeen = latestLog ? new Date(latestLog.created_at).getTime() : 0;
+    const isDataActive = (Date.now() - lastSeen) < TIMEOUT_MS;
 
-    if (isActive) {
-      return checkActiveWarning(deviceId, latestLog) ? "warning" : "online";
-    } else if (pingResults[deviceId]?.success) {
-      return "standby";
+    // 💡 สถานะ Disconnect: ข้อมูลเซ็นเซอร์ยังเข้า (Active) แต่ปิงล่าสุดล้มเหลว
+    if (isDataActive && ping && ping.success === false) {
+      return "disconnect";
     }
-    return "offline";
-  }, [pingResults, checkActiveWarning]);
 
-  // 2. 💡 ย้าย fetchDevices ขึ้นมาประกาศด้านบน (แก้ 'fetchDevices' is not defined)
+    if (isDataActive) {
+      return checkActiveWarning(deviceId, latestLog) ? "warning" : "online";
+    } 
+    
+    if (ping?.success) return "standby";
+    
+    return "offline";
+}, [pingResults, checkActiveWarning]);
+
+  // 3. ฟังก์ชันดึงข้อมูลอุปกรณ์ทั้งหมด
   const fetchDevices = useCallback(async () => {
     setLoading(true);
     const { data: devicesData, error: devError } = await supabase
@@ -109,12 +123,44 @@ export default function App() {
     setLoading(false);
   }, [calculateDeviceStatus]);
 
-  // 3. 💡 แก้ไข Cascading Render Error: ลบ useEffect ที่เฝ้าดู [view] ทิ้ง
-  // แล้วเปลี่ยนมารีเซ็ตผ่านฟังก์ชันการนำทางแทน
+  // 🆕 ฟังก์ชันสำหรับการเพิ่มอุปกรณ์ใหม่ผ่านปอบอับ
+  const handleAddDevice = async (name, location) => {
+    try {
+      // 1. 💡 เรียกใช้ RPC เพื่อหาไอดีที่ว่างที่สุดมาใช้
+      const { data: nextAvailableId, error: rpcError } = await supabase
+        .rpc('get_available_device_id');
+
+      if (rpcError) throw rpcError;
+
+      // 2. 💡 ทำการ Insert โดยระบุ ID ที่ได้มาด้วยตัวเอง
+      const { data, error } = await supabase
+        .from("devices")
+        .insert([{
+          id: nextAvailableId, // 👈 ระบุ ID ที่ว่างที่หามาได้
+          name: name,
+          location: location,
+          status: 'offline'
+        }])
+        .select();
+
+      if (error) throw error;
+
+      // อัปเดตข้อมูลหน้าจอ
+      fetchDevices();
+      alert(`Provision Success! Assigned ID: ${data[0].id}`);
+
+    } catch (err) {
+      console.error("Provisioning failed:", err);
+      alert("Error: " + (err.message || "Cannot assign new ID"));
+    }
+  };
+
+  // 4. ระบบนำทางและ Reset การปิดแจ้งเตือน
   const navigateTo = (targetView, device = null) => {
-    setDismissedAlerts([]); // รีเซ็ตการแจ้งเตือนที่กดปิดเมื่อเปลี่ยนหน้า
+    setDismissedAlerts([]);
     setView(targetView);
     if (device) setActiveDevice(device);
+    else if (targetView === "home") setActiveDevice(null);
   };
 
   const goHome = () => navigateTo("home");
@@ -125,11 +171,9 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -144,22 +188,14 @@ export default function App() {
     try {
       await fetch(targetUrl, { mode: 'no-cors', cache: 'no-cache' });
       const latency = Date.now() - startTime;
-
       setPingResults(prev => ({
         ...prev,
         [deviceId]: { loading: false, success: true, latency: latency, time: new Date() }
       }));
-
-      setDevices(prev => prev.map(d =>
-        d.id === deviceId && d.status === "offline" ? { ...d, status: "standby" } : d
-      ));
-
+      setDevices(prev => prev.map(d => d.id === deviceId && d.status === "offline" ? { ...d, status: "standby" } : d));
       setGlobalAlerts(prev => prev.filter(a => !(a.device_id === deviceId && a.metric === "status")));
-    } catch { // 💡 แก้ไข 'err' is defined but never used
-      setPingResults(prev => ({
-        ...prev,
-        [deviceId]: { loading: false, success: false, latency: 0, time: new Date() }
-      }));
+    } catch {
+      setPingResults(prev => ({ ...prev, [deviceId]: { loading: false, success: false, latency: 0, time: new Date() } }));
     }
   };
 
@@ -169,12 +205,7 @@ export default function App() {
         setGlobalAlerts(prev => {
           const exists = prev.find(a => a.device_id === d.id && a.metric === "status");
           if (!exists) {
-            return [{
-              metric: "status",
-              value: "DOWN",
-              time: new Date().toISOString(),
-              device_id: d.id
-            }, ...prev].slice(0, 15);
+            return [{ metric: "status", value: "DOWN", time: new Date().toISOString(), device_id: d.id }, ...prev].slice(0, 15);
           }
           return prev;
         });
@@ -184,7 +215,6 @@ export default function App() {
 
   useEffect(() => {
     fetchDevices();
-
     const globalChannel = supabase
       .channel("global-sensor-stream")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "sensor_logs" }, (payload) => {
@@ -193,34 +223,23 @@ export default function App() {
           prevDevices.map((d) => {
             if (d.id === log.device_id) {
               const status = calculateDeviceStatus(log.device_id, log);
-              return {
-                ...d,
-                status: status,
-                temperature: log.temperature,
-                humidity: log.humidity,
-                voltage: log.voltage,
-                sound_db: log.sound_db,
-                last_seen: log.created_at
-              };
+              return { ...d, status, temperature: log.temperature, humidity: log.humidity, voltage: log.voltage, sound_db: log.sound_db, last_seen: log.created_at };
             }
             return d;
           })
         );
       })
       .subscribe();
-
     return () => supabase.removeChannel(globalChannel);
-  }, [fetchDevices, calculateDeviceStatus]); // 💡 ใส่ Dependencies ให้ครบถ้วน
+  }, [fetchDevices, calculateDeviceStatus]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setView("home");
+    navigateTo("home");
   };
 
-  if (!user) {
-    return <LoginView onLoginSuccess={(user) => setUser(user)} />;
-  }
+  if (!user) return <LoginView onLoginSuccess={(u) => setUser(u)} />;
 
   const activeAlerts = view === "analytics" ? localAlerts : globalAlerts;
 
@@ -228,11 +247,8 @@ export default function App() {
     <div className={darkMode ? "dark" : ""}>
       <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0F172A] text-slate-800 dark:text-[#D0D2D6] transition-colors duration-300 font-sans">
         <Navbar
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-          onHomeClick={goHome}
-          onSettingsClick={openSettings}
-          onLogout={handleLogout}
+          darkMode={darkMode} setDarkMode={setDarkMode}
+          onHomeClick={goHome} onSettingsClick={openSettings} onLogout={handleLogout}
         />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -243,6 +259,8 @@ export default function App() {
               onNavigate={openAnalytics}
               pingResults={pingResults || {}}
               onPing={handleManualPing}
+              // 💡 เปลี่ยนจากเปิด Settings ให้เป็นเปิดปอบอับแทน
+              onAddClick={() => setIsAddModalOpen(true)}
             />
           )}
 
@@ -255,16 +273,20 @@ export default function App() {
           )}
 
           {view === "settings" && (
-            <SettingsView onBack={goHome} onRefreshConfig={fetchDevices} />
+            <SettingsView onBack={goHome} onRefreshConfig={fetchDevices} initialTab="devices" />
           )}
         </main>
 
+        {/* 💡 วางคอมโพเนนต์ปอบอับไว้ที่นี่ */}
+        <AddDeviceModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          onConfirm={handleAddDevice}
+        />
+
         <AlertPopup
-          alerts={activeAlerts}
-          devices={devices}
-          view={view}
-          dismissedAlerts={dismissedAlerts}
-          setDismissedAlerts={setDismissedAlerts}
+          alerts={activeAlerts} devices={devices} view={view}
+          dismissedAlerts={dismissedAlerts} setDismissedAlerts={setDismissedAlerts}
         />
       </div>
     </div>
