@@ -2,12 +2,15 @@ import React, { useEffect, useState } from "react";
 import Navbar from "./components/Navbar";
 import HomeView from "./views/HomeView";
 import AnalyticsView from "./views/AnalyticsView";
+import SettingsView from "./views/SettingsView"; // นำเข้าหน้าตั้งค่า
+import LoginView from "./views/LoginView"; // นำเข้าหน้า Login
 import AlertPopup from "./components/AlertPopup";
 import useSensorData from "./hooks/useSensorData";
 import { supabase } from "./lib/supabase";
 import { METRICS_CONFIG } from "./utils/metricsConfig";
 
 export default function App() {
+  const [user, setUser] = useState(null); // เก็บสถานะการเข้าสู่ระบบ
   const [view, setView] = useState("home");
   const [devices, setDevices] = useState([]);
   const [activeDevice, setActiveDevice] = useState(null);
@@ -17,13 +20,24 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const [globalAlerts, setGlobalAlerts] = useState([]);
-
-  // 💡 State สำหรับเก็บรายการแจ้งเตือนที่ถูกกดปิด (Dismissed)
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
+
+  // ตรวจสอบ Session การ Login
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const { history, alerts: localAlerts } = useSensorData(activeDevice?.id, date, timeRange);
 
-  // 💡 ฟังก์ชันเช็คว่าอุปกรณ์มี Warning ที่ยังไม่ถูกกดปิดหรือไม่
+  // ฟังก์ชันเช็ค Warning สำหรับสถานะอุปกรณ์
   const checkActiveWarning = (deviceId, latestLog) => {
     if (!latestLog) return false;
     return Object.keys(METRICS_CONFIG).some((m) => {
@@ -33,9 +47,7 @@ export default function App() {
 
       const isExceeded = val > conf.threshold || (conf.thresholdMin && val < conf.thresholdMin);
       if (isExceeded) {
-        // สร้าง Key เฉพาะสำหรับการแจ้งเตือนนี้
         const alertKey = `${deviceId}-${latestLog.created_at}-${m}`;
-        // แสดงสถานะ Warning ตราบใดที่ Key นี้ยังไม่อยู่ในรายการที่ถูกกดปิด
         return !dismissedAlerts.includes(alertKey);
       }
       return false;
@@ -76,7 +88,6 @@ export default function App() {
             const now = Date.now();
             
             if (now - lastSeen < TIMEOUT_MS) {
-              // 💡 เปลี่ยนสถานะโดยใช้ฟังก์ชันเช็ค Warning ค้างไว้
               currentStatus = checkActiveWarning(device.id, latestLog) ? "warning" : "online";
 
               Object.keys(METRICS_CONFIG).forEach((m) => {
@@ -110,16 +121,7 @@ export default function App() {
 
     fetchDevices();
 
-    const timeoutCheck = setInterval(() => {
-      const TIMEOUT_MS = 300 * 1000;
-      const now = Date.now();
-      setDevices(prevDevices => prevDevices.map(d => {
-        if (!d.last_seen) return { ...d, status: "offline" };
-        const isExpired = now - new Date(d.last_seen).getTime() > TIMEOUT_MS;
-        return isExpired ? { ...d, status: "offline" } : d;
-      }));
-    }, 30000); 
-
+    // ระบบ Real-time Monitoring
     const globalChannel = supabase
       .channel("global-sensor-stream")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "sensor_logs" }, (payload) => {
@@ -127,7 +129,6 @@ export default function App() {
         setDevices((prevDevices) =>
           prevDevices.map((d) => {
             if (d.id === log.device_id) {
-              // 💡 เช็คสถานะ Warning ค้างไว้เมื่อมีข้อมูลใหม่เข้ามา
               const status = checkActiveWarning(log.device_id, log) ? "warning" : "online";
               return {
                 ...d,
@@ -142,36 +143,43 @@ export default function App() {
             return d;
           })
         );
-
-        Object.keys(METRICS_CONFIG).forEach((m) => {
-          const conf = METRICS_CONFIG[m];
-          if (conf && !conf.isMultiLine && (log[m] > conf.threshold || (conf.thresholdMin && log[m] < conf.thresholdMin))) {
-            setGlobalAlerts((prev) => [
-              { metric: m, value: log[m], time: log.created_at, device_id: log.device_id },
-              ...prev,
-            ].slice(0, 15));
-          }
-        });
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(globalChannel);
-      clearInterval(timeoutCheck);
-    };
-  }, [dismissedAlerts]); // 💡 ทำงานใหม่เมื่อมีการกดปิดแจ้งเตือน
+    return () => supabase.removeChannel(globalChannel);
+  }, [dismissedAlerts]);
 
   const openAnalytics = (device) => { setView("analytics"); setActiveDevice(device); };
   const goHome = () => { setView("home"); setActiveDevice(null); };
+  const openSettings = () => { setView("settings"); }; // ฟังก์ชันไปหน้าตั้งค่า
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setView("home");
+  };
+
+  // ตรวจสอบว่า Login หรือยัง
+  if (!user) {
+    return <LoginView onLoginSuccess={(user) => setUser(user)} />;
+  }
 
   const activeAlerts = view === "analytics" ? localAlerts : globalAlerts;
 
   return (
     <div className={darkMode ? "dark" : ""}>
       <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0F172A] text-slate-800 dark:text-[#D0D2D6] transition-colors duration-300 font-sans">
-        <Navbar darkMode={darkMode} setDarkMode={setDarkMode} onHomeClick={goHome} />
+        <Navbar 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+          onHomeClick={goHome} 
+          onSettingsClick={openSettings} 
+          onLogout={handleLogout} 
+        />
+        
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {view === "home" && <HomeView devices={devices} loading={loading} onNavigate={openAnalytics} />}
+          
           {view === "analytics" && activeDevice && (
             <AnalyticsView
               device={activeDevice} history={history} activeMetric={metric} onMetricChange={setMetric}
@@ -179,8 +187,13 @@ export default function App() {
               alerts={localAlerts} onBack={goHome} darkMode={darkMode}
             />
           )}
+
+          {/* แสดงหน้า SettingsView */}
+          {view === "settings" && (
+            <SettingsView onBack={goHome} />
+          )}
         </main>
-        {/* 💡 ส่ง dismissedAlerts และฟังก์ชันเซ็ตค่าไปยัง AlertPopup */}
+
         <AlertPopup 
           alerts={activeAlerts} 
           devices={devices} 
