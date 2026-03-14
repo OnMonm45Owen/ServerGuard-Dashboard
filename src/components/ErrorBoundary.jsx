@@ -6,7 +6,8 @@ class ErrorBoundary extends React.Component {
     this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error) {
+  // 💡 แก้ไขจุดนี้เพื่อลบ ESLint Error
+  static getDerivedStateFromError(_error) {
     return { hasError: true };
   }
 
