@@ -5,7 +5,6 @@ import MetricSelector from "../components/MetricSelector";
 import TimeRangeSelector from "../components/TimeRangeSelector";
 import AlertPanel from "../components/AlertPanel";
 import ExportReportModal from "../components/ExportReportModal";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
 const AnalyticsView = ({
     device,
@@ -18,18 +17,50 @@ const AnalyticsView = ({
     setSelectedDate,
     alerts,
     onBack,
-    darkMode
+    darkMode,
+    metricsConfig // 💡 รับ dynamic config จาก useSensorData
 }) => {
-    // 💡 สถานะเปิด/ปิด Modal รายงาน
     const [isExportOpen, setIsExportOpen] = useState(false);
 
-    // ตรวจสอบว่าเป็นโหมด 1 ชั่วโมงหรือไม่ เพื่อแสดงป้าย Live
+    // 🛡️ Guard Clause: ป้องกัน Error ขณะรอข้อมูลจาก Supabase
+    if (!metricsConfig || Object.keys(metricsConfig).length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+                <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-slate-500 font-black uppercase tracking-widest animate-pulse">
+                    Synchronizing System Config...
+                </p>
+            </div>
+        );
+    }
+
     const isLiveMode = timeRange === "1h" && (!selectedDate || new Date(selectedDate).toDateString() === new Date().toDateString());
+
+    // 🔊 ตรวจสอบว่าเป็น Metric เกี่ยวกับเสียงหรือไม่ เพื่อรวมกราฟ
+    const isSoundMetric = activeMetric === 'sound_db' || activeMetric === 'sound_peak';
+
+    // 🛠️ สร้างชุดการตั้งค่าแบบ Dynamic
+    const displayConfig = { ...metricsConfig };
+
+    if (isSoundMetric && metricsConfig['sound_db']) {
+        displayConfig['sound_combined'] = {
+            ...metricsConfig['sound_db'],
+            label: "Acoustic Analysis",
+            is_multi_line: true, // 👈 บอก MetricChart ให้วาดหลายเส้น
+            lines: [
+                { key: 'sound_db', label: 'Average (dB)', color: '#6366f1' },
+                { key: 'sound_peak', label: 'Peak (dB)', color: '#f43f5e' }
+            ]
+        };
+    }
+
+    // กำหนด Key ที่จะส่งให้กราฟ (ถ้าเป็นเรื่องเสียง ให้ส่งตัวที่รวมแล้ว)
+    const chartKey = isSoundMetric ? 'sound_combined' : activeMetric;
 
     return (
         <div className="p-6 max-w-7xl mx-auto animate-in fade-in zoom-in duration-500 pb-20">
             
-            {/* 🔙 Navigation & Actions Header */}
+            {/* 🔙 Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div className="flex items-center gap-4">
                     <button 
@@ -49,17 +80,9 @@ const AnalyticsView = ({
                     </div>
                 </div>
 
-                {/* 📄 ปุ่มกดเพื่อออกรายงาน PDF - ปรับปรุงสไตล์ให้ดูพรีเมียม */}
                 <button 
                     onClick={() => setIsExportOpen(true)}
-                    className="
-                        bg-slate-900 text-white px-8 py-4 rounded-2xl 
-                        font-black text-xs uppercase tracking-widest 
-                        shadow-[0_6px_0_0_#4f46e5] border-2 border-indigo-500 
-                        hover:translate-y-1 hover:shadow-[0_2px_0_0_#4f46e5] 
-                        active:translate-y-2 active:shadow-none 
-                        transition-all flex items-center gap-3
-                    "
+                    className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-[0_6px_0_0_#4f46e5] border-2 border-indigo-500 hover:translate-y-1 hover:shadow-[0_2px_0_0_#4f46e5] active:translate-y-2 active:shadow-none transition-all flex items-center gap-3"
                 >
                     <span className="text-lg">📄</span> Generate Official Report
                 </button>
@@ -89,12 +112,12 @@ const AnalyticsView = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-lg bg-slate-50 dark:bg-[#0f172a] border-2 border-slate-100 dark:border-slate-800">
-                             {activeMetric === 'ping' ? '📡' : '⚡'}
+                             {activeMetric.includes('sound') ? '🔊' : activeMetric === 'ping' ? '📡' : '⚡'}
                         </div>
                         <div>
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Current Metric</span>
                             <h3 className="font-black text-slate-900 dark:text-white uppercase text-xl leading-none">
-                                {METRICS_CONFIG[activeMetric]?.label}
+                                {displayConfig[chartKey]?.label || "Loading..."}
                             </h3>
                         </div>
                     </div>
@@ -107,7 +130,7 @@ const AnalyticsView = ({
                         <div className="w-[2px] h-8 bg-slate-200 dark:bg-slate-700"></div>
                         <div className="text-center">
                             <span className="text-[9px] font-black text-slate-400 uppercase block">Unit</span>
-                            <span className="text-lg font-black text-indigo-500">{METRICS_CONFIG[activeMetric]?.unit}</span>
+                            <span className="text-lg font-black text-indigo-500">{displayConfig[chartKey]?.unit}</span>
                         </div>
                     </div>
                 </div>
@@ -115,8 +138,8 @@ const AnalyticsView = ({
                 <div className="h-[400px] w-full">
                     <MetricChart
                         history={history}
-                        activeMetric={activeMetric}
-                        config={METRICS_CONFIG}
+                        activeMetric={chartKey} 
+                        config={displayConfig}   
                         timeRange={timeRange}
                         darkMode={darkMode}
                     />
@@ -125,7 +148,11 @@ const AnalyticsView = ({
 
             {/* 🔘 Metric Selector */}
             <div className="mb-16">
-                <MetricSelector activeMetric={activeMetric} onMetricChange={onMetricChange} />
+                <MetricSelector 
+                    activeMetric={activeMetric} 
+                    onMetricChange={onMetricChange}
+                    metricsConfig={metricsConfig} // 👈 ส่ง config ต่อให้ปุ่มกด
+                />
             </div>
 
             {/* 📜 Incident Log */}
@@ -140,11 +167,11 @@ const AnalyticsView = ({
                     </span>
                 </div>
                 <div className="bg-white dark:bg-[#1e293b]/50 rounded-2xl border-2 border-slate-800 overflow-hidden">
-                    <AlertPanel alerts={alerts} />
+                    <AlertPanel alerts={alerts} config={metricsConfig} />
                 </div>
             </div>
 
-            {/* 💡 เรียกใช้ ExportReportModal พร้อมส่ง activeMetric เข้าไป */}
+            {/* 💡 Report Export Modal */}
             <ExportReportModal 
                 isOpen={isExportOpen} 
                 onClose={() => setIsExportOpen(false)} 
@@ -152,7 +179,9 @@ const AnalyticsView = ({
                 history={history}
                 alerts={alerts}
                 timeRange={timeRange}
-                activeMetric={activeMetric} // 👈 สำคัญ: เพื่อให้กราฟใน PDF แสดงข้อมูลที่ถูกต้อง
+                activeMetric={chartKey}
+                config={displayConfig}
+                selectedDate={selectedDate}
             />
         </div>
     );

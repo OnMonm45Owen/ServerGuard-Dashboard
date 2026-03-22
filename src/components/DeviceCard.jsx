@@ -1,10 +1,10 @@
 // src/components/DeviceCard.jsx
 import React from "react";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
+// 💡 รับ metricsConfig เพิ่มเข้ามาจาก Parent (HomeView)
+export default function DeviceCard({ device, onOpen, pingResult, onPing, metricsConfig = {} }) {
   
-  // 💡 ฟังก์ชันจัดการสีและข้อความสถานะ (รวม Disconnect สีส้ม)
+  // 💡 ฟังก์ชันจัดการสีและข้อความสถานะ
   const getStatusDisplay = () => {
     switch (device.status) {
       case "online":
@@ -13,16 +13,8 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
         return { label: "Warning", color: "bg-amber-500", shadow: "shadow-amber-500/30", animate: "animate-pulse" };
       case "standby":
         return { label: "Standby", color: "bg-blue-600", shadow: "shadow-blue-500/30", animate: "" };
-      
-      // 💡 กรณีข้อมูลเข้าแต่ปิงไม่ติด (Disconnect - สีส้ม)
       case "disconnect":
-        return { 
-          label: "P2P Disconnected", 
-          color: "bg-orange-600", 
-          shadow: "shadow-orange-500/30", 
-          animate: "animate-pulse" 
-        };
-
+        return { label: "P2P Disconnected", color: "bg-orange-600", shadow: "shadow-orange-500/30", animate: "animate-pulse" };
       default:
         return { label: "Offline", color: "bg-rose-700", shadow: "shadow-rose-500/40", animate: "animate-pulse" };
     }
@@ -30,20 +22,34 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
 
   const status = getStatusDisplay();
 
-  // ตรวจสอบว่าค่าเซ็นเซอร์ผิดปกติหรือไม่
+  // 🛠️ ตรวจสอบว่าค่าเซ็นเซอร์ผิดปกติหรือไม่ โดยใช้ Dynamic Config
   const isValueAlert = (metricKey, value) => {
     if (value === null || value === undefined) return false;
-    const config = METRICS_CONFIG[metricKey];
+    const config = metricsConfig[metricKey]; // 💡 ดึงจาก dynamic config
     if (!config) return false;
-    if (config.threshold && value > config.threshold) return true;
-    if (config.thresholdMin && value < config.thresholdMin) return true;
-    return false;
+    
+    const isOverMax = config.threshold !== null && value > config.threshold;
+    const isUnderMin = config.threshold_min !== null && value < config.threshold_min; // 💡 ใช้ threshold_min ตาม DB
+    
+    return isOverMax || isUnderMin;
   };
 
   const formatValue = (val) => {
-    if (val === null || val === undefined) return "--";
-    return typeof val === 'number' ? val.toFixed(1) : val;
+    if (val === null || val === undefined || val === '') return "--";
+    const num = parseFloat(val);
+    if (isNaN(num)) return val;
+    
+    // 💡 เช็คว่าถ้าเป็นค่าน้อยมากๆ (เช่น 0.0117) ให้แสดง 4 ตำแหน่ง, ถ้าเป็นค่าทั่วไปให้แสดง 1 ตำแหน่ง
+    if (Math.abs(num) > 0 && Math.abs(num) < 1) {
+      return num.toFixed(5); 
+    }
+    return num.toFixed(1);
   };
+
+  // กรองเฉพาะ Metric ที่ต้องการแสดงผลใน Card (ไม่รวมตัวที่เป็น Multi-line หรือค่าวิเคราะห์อื่นๆ)
+  const displayMetrics = Object.keys(metricsConfig).filter(key => 
+    !metricsConfig[key].is_multi_line && key !== 'ping'
+  );
 
   return (
     <div className={`
@@ -57,17 +63,10 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
       }
     `}>
 
-      {/* 💡 Header: ปรับปรุงการจัดการพื้นที่ใหม่ */}
-      <div className="flex justify-between items-start mb-4 gap-3"> {/* เพิ่ม gap เพื่อกันกระแทก */}
-        
-        {/* ส่วนชื่อเครื่อง: เพิ่ม min-w-0 เพื่อให้ truncate ทำงานได้จริง */}
+      {/* Header */}
+      <div className="flex justify-between items-start mb-4 gap-3">
         <div className="flex-1 min-w-0"> 
           <div className="flex items-center gap-2 mb-1">
-             {/* shrink-0 เพื่อไม่ให้ ID ถูกบีบจนแบน */}
-             <span className="shrink-0 bg-slate-900 text-white dark:bg-indigo-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">
-               {device.id}
-             </span>
-             {/* truncate จะทำงานเมื่อพื้นที่ไม่พอ */}
              <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter truncate leading-tight">
                {device.name}
              </h3>
@@ -83,7 +82,6 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
           </div>
         </div>
 
-        {/* ป้ายสถานะ: เพิ่ม shrink-0 และ whitespace-nowrap เพื่อไม่ให้หลุดกรอบ */}
         <span className={`
           shrink-0 whitespace-nowrap text-[9px] px-3 py-1.5 rounded-xl text-white font-black uppercase tracking-wider shadow-lg 
           ${status.color} ${status.shadow} ${status.animate}
@@ -92,19 +90,19 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
         </span>
       </div>
 
-      {/* Metrics Grid */}
+      {/* Dynamic Metrics Grid */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        {Object.keys(METRICS_CONFIG).filter(key => !METRICS_CONFIG[key].isMultiLine).map((key) => {
-          const config = METRICS_CONFIG[key];
+        {displayMetrics.map((key) => {
+          const config = metricsConfig[key];
           const hasAlert = isValueAlert(key, device[key]);
 
           return (
-            <div key={key} className="bg-slate-50 dark:bg-[#0f172a] border-2 border-slate-100 dark:border-slate-800 p-3 rounded-2xl">
+            <div key={key} className="bg-slate-50 dark:bg-[#0f172a] border-2 border-slate-100 dark:border-slate-800 p-3 rounded-2xl transition-colors">
               <span className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1.5 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }}></span>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color || '#6366f1' }}></span>
                 {config.label}
               </span>
-              <div className={`text-xl font-black ${hasAlert ? 'text-rose-600 animate-bounce' : 'text-slate-900 dark:text-slate-100'}`}>
+              <div className={`text-xl font-black ${hasAlert ? 'text-rose-600 animate-pulse' : 'text-slate-900 dark:text-slate-100'}`}>
                 {formatValue(device[key])}<span className="text-[10px] font-bold opacity-50 ml-0.5">{config.unit}</span>
               </div>
             </div>
@@ -112,7 +110,7 @@ export default function DeviceCard({ device, onOpen, pingResult, onPing }) {
         })}
       </div>
 
-      {/* Ping & Action Section */}
+      {/* Action Buttons */}
       <div className="space-y-3">
         <button
           onClick={() => onPing(device.id, device.ip_address)}

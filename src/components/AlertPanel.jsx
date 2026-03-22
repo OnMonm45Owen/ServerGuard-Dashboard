@@ -1,11 +1,11 @@
 // src/components/AlertPanel.jsx
 import React, { useState } from "react";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-export default function AlertPanel({ alerts }) {
+// 💡 รับ alerts และ config (จากฐานข้อมูล) มาใช้งาน
+export default function AlertPanel({ alerts, config = {} }) {
   const [showAll, setShowAll] = useState(false);
 
-  // 💡 กรณีไม่มีข้อมูลการแจ้งเตือน (ปรับขอบหนาและตัวหนังสือชัดเจน)
+  // 💡 กรณีไม่มีข้อมูลการแจ้งเตือน
   if (!alerts || alerts.length === 0) {
     return (
       <div className="bg-white dark:bg-[#1e293b] p-8 rounded-3xl border-2 border-slate-300 dark:border-slate-700 mt-6 shadow-sm">
@@ -46,19 +46,21 @@ export default function AlertPanel({ alerts }) {
 
       <div className="space-y-4">
         {displayedAlerts.map((alert, index) => {
-          const config = METRICS_CONFIG[alert.metric];
+          // 💡 ดึงค่าคอนฟิกจาก Props ที่ส่งมาจากฐานข้อมูล
+          const metricConfig = config[alert.metric];
+          
           return (
             <div
-              key={index}
+              key={`${alert.time}-${index}`}
               className="flex justify-between items-center bg-slate-50 dark:bg-[#0f172a] px-6 py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-500/50 transition-all group"
             >
               <div className="flex items-center gap-5">
-                {/* 💡 แถบสีสถานะด้านข้าง - หนาขึ้นและชัดขึ้น */}
                 <div className="w-3 h-12 rounded-full bg-rose-600 shadow-[0_0_15px_rgba(225,29,72,0.4)]"></div>
                 
                 <div className="flex flex-col">
                   <span className="font-black text-lg text-slate-900 dark:text-white group-hover:text-rose-600 transition-colors uppercase tracking-tight">
-                    {config?.label || alert.metric} EXCEEDED
+                    {/* ใช้ Label จาก DB หรือชื่อ metric ดั้งเดิม */}
+                    {metricConfig?.label || alert.metric} ANOMALY
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded">
@@ -67,7 +69,7 @@ export default function AlertPanel({ alerts }) {
                       })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      System Log #{alerts.length - index}
+                      ID: {alert.device_id?.slice(-6) || 'N/A'}
                     </span>
                   </div>
                 </div>
@@ -78,7 +80,7 @@ export default function AlertPanel({ alerts }) {
                   {alert.value}
                 </span>
                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
-                   UNIT: {config?.unit || 'N/A'}
+                   UNIT: {metricConfig?.unit || '---'}
                 </span>
               </div>
             </div>
@@ -86,7 +88,6 @@ export default function AlertPanel({ alerts }) {
         })}
       </div>
       
-      {/* 💡 ส่วนท้าย: ออกแบบให้เหมือน Log System ในห้องควบคุม */}
       <div className="mt-8 pt-6 border-t-2 border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.3em]">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-2">

@@ -105,11 +105,24 @@ export default function SettingsView({ onBack, onRefreshConfig, initialTab = "de
         setSettings(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
     };
 
+    // 💡 ฟังก์ชันบันทึก Config กลับไปยัง Supabase
     const saveToDb = async (setting) => {
         setSaving(setting.id);
+        
+        // จัดการกรณีเป็นค่าว่าง (ลบตัวเลขออกหมด) ให้เซ็ตเป็น 0 หรือ null ตามความเหมาะสม
         const parsedThreshold = setting.threshold === "" ? 0 : parseFloat(setting.threshold);
-        const parsedThresholdMin = setting.threshold_min === "" ? null : parseFloat(setting.threshold_min);
-        const { error } = await supabase.from("metrics_settings").update({ threshold: parsedThreshold, threshold_min: parsedThresholdMin }).eq("id", setting.id);
+        const parsedThresholdMin = (setting.threshold_min === "" || setting.threshold_min === null) 
+            ? null 
+            : parseFloat(setting.threshold_min);
+
+        const { error } = await supabase
+            .from("metrics_settings")
+            .update({ 
+                threshold: parsedThreshold, 
+                threshold_min: parsedThresholdMin 
+            })
+            .eq("id", setting.id);
+
         if (!error) {
             setSavedSuccess(setting.id);
             if (onRefreshConfig) onRefreshConfig();
@@ -132,6 +145,10 @@ export default function SettingsView({ onBack, onRefreshConfig, initialTab = "de
         </div>
     );
 
+    // ตรวจสอบว่า Metric ไหนบ้างที่ควรจะมี Min Limit (เช่น อุณหภูมิ, ความชื้น, แรงดันไฟฟ้า)
+    // การใช้ตัวแปรนี้ช่วยให้ Input ของ Min Limit ไม่หายไปถ้าค่าใน DB เป็น null ชั่วคราว
+    const metricsWithMinLimit = ['temperature', 'humidity', 'voltage'];
+
     return (
         <div className="p-6 max-w-5xl mx-auto animate-in fade-in zoom-in duration-500 pb-20">
 
@@ -144,7 +161,7 @@ export default function SettingsView({ onBack, onRefreshConfig, initialTab = "de
                 <button onClick={onBack} className="bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-2 border-transparent px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl active:scale-95 border-b-4 border-b-indigo-500">← Back</button>
             </div>
 
-            {/* 💡 Tab Selector */}
+            {/* Tab Selector */}
             <div className="flex gap-2 p-1.5 bg-slate-200 dark:bg-slate-800 rounded-2xl mb-12 border-2 border-slate-300 dark:border-slate-700">
                 <button 
                     onClick={() => setActiveTab("devices")}
@@ -162,13 +179,13 @@ export default function SettingsView({ onBack, onRefreshConfig, initialTab = "de
 
             {activeTab === "devices" ? (
                 <div className="animate-in slide-in-from-left-4 duration-300">
-                    {/* ⚙️ รายการเครื่องที่มีอยู่ */}
+                    {/* รายการเครื่องที่มีอยู่ */}
                     <div className="grid gap-6">
                         {devices.map((dev) => (
                             <div key={dev.id} className="bg-white dark:bg-[#1e293b] border-2 border-slate-300 dark:border-slate-700 p-6 rounded-[2rem] flex flex-col gap-6 hover:border-indigo-500 transition-all shadow-md">
                                 <div className="flex justify-between items-center border-b-2 border-slate-100 dark:border-slate-800 pb-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 bg-slate-900 dark:bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-sm">{dev.id.slice(-2)}</div>
+                                        <div className="w-10 h-10 bg-slate-900 dark:bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-sm">{String(dev.id).slice(-2)}</div>
                                         <h4 className="font-black text-slate-900 dark:text-white text-xl uppercase tracking-tighter">{dev.id}</h4>
                                     </div>
                                     <div className="flex gap-2">
@@ -215,15 +232,30 @@ export default function SettingsView({ onBack, onRefreshConfig, initialTab = "de
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-end gap-6 bg-slate-50 dark:bg-[#0f172a]/50 p-6 rounded-[2rem] border-2 border-slate-100 dark:border-slate-800">
-                                {item.threshold_min !== null && (
+                                
+                                {/* 💡 แก้ไข: เพิ่มการเช็คเพื่อแสดงกล่อง Min Limit และใส่ Fallback เป็น "" */}
+                                {(item.threshold_min !== null || metricsWithMinLimit.includes(item.id)) && (
                                     <div className="flex flex-col gap-2">
                                         <span className="text-[10px] font-black text-rose-500 uppercase ml-2">Min Limit</span>
-                                        <input type="number" step="0.1" value={item.threshold_min} onChange={(e) => handleUpdate(item.id, 'threshold_min', e.target.value)} className="w-32 p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black text-center text-2xl text-rose-600 outline-none focus:border-rose-500" />
+                                        <input 
+                                            type="number" 
+                                            step="0.1" 
+                                            value={item.threshold_min ?? ""} 
+                                            onChange={(e) => handleUpdate(item.id, 'threshold_min', e.target.value)} 
+                                            className="w-32 p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black text-center text-2xl text-rose-600 outline-none focus:border-rose-500" 
+                                        />
                                     </div>
                                 )}
+
                                 <div className="flex flex-col gap-2">
                                     <span className="text-[10px] font-black text-amber-500 uppercase ml-2">{item.id === 'ping' ? 'Timeout (ms)' : 'Max Limit'}</span>
-                                    <input type="number" step="0.1" value={item.threshold} onChange={(e) => handleUpdate(item.id, 'threshold', e.target.value)} className="w-32 p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black text-center text-2xl text-slate-900 dark:text-white outline-none focus:border-indigo-500" />
+                                    <input 
+                                        type="number" 
+                                        step="0.1" 
+                                        value={item.threshold ?? ""} 
+                                        onChange={(e) => handleUpdate(item.id, 'threshold', e.target.value)} 
+                                        className="w-32 p-4 bg-white dark:bg-[#1e293b] border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black text-center text-2xl text-slate-900 dark:text-white outline-none focus:border-indigo-500" 
+                                    />
                                 </div>
                                 <button onClick={() => saveToDb(item)} disabled={saving === item.id} className={`w-36 px-4 py-5 rounded-2xl font-black text-xs uppercase transition-all ${savedSuccess === item.id ? "bg-emerald-500 text-white" : "bg-indigo-600 text-white shadow-[0_8px_0_0_#312e81] hover:translate-y-[4px] active:shadow-none active:translate-y-[8px]"}`}>
                                     {savedSuccess === item.id ? "✓ Saved" : "Push Config"}

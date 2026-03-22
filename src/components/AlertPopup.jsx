@@ -1,13 +1,13 @@
 // src/components/AlertPopup.jsx
 import React, { useEffect, useState } from "react";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
 export default function AlertPopup({ 
   alerts, 
   devices, 
   view, 
   dismissedAlerts, 
-  setDismissedAlerts 
+  setDismissedAlerts,
+  config: metricsConfig // 💡 รับ dynamic config จากฐานข้อมูลผ่าน props
 }) {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
@@ -16,8 +16,8 @@ export default function AlertPopup({
     return () => clearInterval(timer);
   }, []);
 
-  // 💡 เช็คความปลอดภัย: ถ้าข้อมูลหลักยังไม่มี ให้ไม่แสดงผลทันทีเพื่อกันแอปพัง
-  if (!alerts || !Array.isArray(alerts) || !devices || !dismissedAlerts) return null;
+  // 💡 เช็คความปลอดภัย: ถ้าข้อมูลหลักหรือ Config ยังไม่มี ให้ไม่แสดงผลทันที
+  if (!alerts || !Array.isArray(alerts) || !devices || !dismissedAlerts || !metricsConfig) return null;
 
   const getStableKey = (alert) => {
     return alert.metric === "status" 
@@ -29,6 +29,7 @@ export default function AlertPopup({
     if (!alert) return false;
     const alertTime = new Date(alert.time).getTime();
     
+    // แจ้งเตือนสถานะ (Offline) จะค้างไว้จนกว่าจะกดปิด, ส่วน Metric อื่นจะโชว์แค่ 10 นาที
     const isFresh = alert.metric === "status" 
       ? true 
       : (currentTime - alertTime) / 60000 <= 10;
@@ -68,10 +69,10 @@ export default function AlertPopup({
 
       <div className={`flex ${isHome ? 'flex-row overflow-x-auto snap-x hide-scrollbar gap-6 w-full justify-center' : 'flex-col gap-4'}`}>
         {activeAlerts.map((alert, index) => {
-          // 💡 ใช้ Optional Chaining (?.) เพื่อกัน Error กรณีหา Config หรือ Device ไม่เจอ
-          const config = METRICS_CONFIG[alert.metric];
+          // 💡 ดึงคอนฟิกจากตัวแปรที่รับมาจาก Supabase
+          const config = metricsConfig[alert.metric];
           const targetDevice = devices.find((d) => d.id === alert.device_id);
-          const deviceName = targetDevice?.name || "Unknown Device";
+          const deviceName = targetDevice?.name || "Unknown Node";
           const isCriticalStatus = alert.metric === "status";
 
           return (
@@ -91,7 +92,7 @@ export default function AlertPopup({
                   </div>
                   <div>
                     <div className={`font-black text-xs uppercase tracking-[0.2em] ${isCriticalStatus ? 'text-rose-200' : 'text-rose-600'}`}>
-                      {isCriticalStatus ? "INFRASTRUCTURE FAILURE" : "CRITICAL ALERT"}
+                      {isCriticalStatus ? "INFRASTRUCTURE FAILURE" : "SENSOR VIOLATION"}
                     </div>
                     <div className="text-sm font-black uppercase leading-tight">{deviceName}</div>
                   </div>
@@ -107,25 +108,27 @@ export default function AlertPopup({
               <div className={`p-4 rounded-xl border-2 mb-3 ${isCriticalStatus ? 'bg-white/10 border-white/20' : 'bg-slate-900 dark:bg-[#0f172a] border-slate-800 dark:border-slate-700'}`}>
                 {isCriticalStatus ? (
                   <div className="text-center">
-                    <div className="text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-rose-200">System Connection Lost</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-rose-200">Network Connection Lost</div>
                     <div className="text-2xl font-black text-white italic animate-pulse">OFFLINE</div>
                     <div className="text-[9px] font-black bg-white text-rose-900 inline-block px-3 py-1 rounded-full mt-3 uppercase tracking-tighter">
-                      Action Required: Use Manual Ping
+                      Immediate Maintenance Required
                     </div>
                   </div>
                 ) : (
                   <>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                      {config?.label || "Unknown"} VIOLATION
+                      {config?.label || alert.metric} LEVEL ABNORMAL
                     </div>
                     <div className="flex items-baseline justify-between">
                       <div className="flex items-baseline gap-2">
                         <span className="text-4xl font-black text-white">{alert.value}</span>
-                        <span className="text-sm font-bold text-rose-500">{config?.unit}</span>
+                        <span className="text-sm font-bold text-rose-500">{config?.unit || '---'}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] font-black text-slate-500 block uppercase">LIMIT</span>
-                        <span className="text-sm font-black text-white">{config?.threshold}</span>
+                        <span className="text-sm font-black text-white">
+                          {alert.value < (config?.threshold_min ?? -Infinity) ? config?.threshold_min : config?.threshold}
+                        </span>
                       </div>
                     </div>
                   </>
@@ -133,7 +136,7 @@ export default function AlertPopup({
               </div>
 
               <div className={`flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-1 ${isCriticalStatus ? 'text-rose-200' : 'text-slate-500'}`}>
-                <span>{isCriticalStatus ? "CRITICAL PROTOCOL ACTIVE" : "SYSTEM DEFENSE ACTIVE"}</span>
+                <span>{isCriticalStatus ? "SECURITY PROTOCOL 01" : "INCIDENT LOGGED"}</span>
                 <span className={`flex items-center gap-2 px-2 py-1 rounded ${isCriticalStatus ? 'bg-white/10' : 'bg-slate-100 dark:bg-slate-800'}`}>
                   <span className={`w-2 h-2 rounded-full animate-ping ${isCriticalStatus ? 'bg-white' : 'bg-rose-600'}`}></span>
                   {new Date(alert.time).toLocaleTimeString('en-GB', { hour12: false })}

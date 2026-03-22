@@ -1,61 +1,46 @@
 // src/hooks/useSensorData.js
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-export default function useSensorData(deviceId, selectedDate, timeRange = "24h") {
+// 💡 รับ metricsConfig เพิ่มเข้ามาเป็นพารามิเตอร์
+export default function useSensorData(deviceId, selectedDate, timeRange = "24h", metricsConfig = {}) {
     const [history, setHistory] = useState([]);
     const [alerts, setAlerts] = useState([]);
 
-    const formatLog = (log) => ({
-        created_at: log.created_at,
+    const formatLog = useCallback((log) => ({
+        ...log,
         time: new Date(log.created_at).toLocaleTimeString("th-TH", { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        temperature: log.temperature,
-        humidity: log.humidity,
-        voltage: log.voltage,     
-        sound_db: log.sound_db,
-    });
+    }), []);
 
-    // 💡 ฟังก์ชันตรวจสอบการแจ้งเตือน
-    const checkAlert = (log) => {
+    const checkAlert = useCallback((log) => {
         let newAlerts = [];
-        if (log.sound_db > 70) {
-            newAlerts.push({ metric: "sound_db", message: "แจ้งเตือนเสียงดังผิดปกติ!", value: log.sound_db, time: log.created_at, device_id: log.device_id });
-        }
-        const otherMetrics = ["temperature", "humidity", "voltage"];
-        otherMetrics.forEach((metric) => {
-            const conf = METRICS_CONFIG[metric];
-            if (log[metric] > conf?.threshold || (conf?.thresholdMin && log[metric] < conf.thresholdMin)) {
-                newAlerts.push({ metric, message: `${conf.label} ผิดปกติ!`, value: log[metric], time: log.created_at, device_id: log.device_id });
+        Object.keys(metricsConfig).forEach((metricId) => {
+            const conf = metricsConfig[metricId];
+            const val = log[metricId];
+
+            if (val !== undefined && val !== null && conf && !conf.is_multi_line) {
+                const isOverMax = conf.threshold !== null && val > conf.threshold;
+                const isUnderMin = conf.threshold_min !== null && val < conf.threshold_min;
+
+                if (isOverMax || isUnderMin) {
+                    newAlerts.push({ 
+                        metric: metricId, 
+                        message: `${conf.label} ผิดปกติ!`, 
+                        value: val, 
+                        time: log.created_at, 
+                        device_id: log.device_id 
+                    });
+                }
             }
         });
         if (newAlerts.length > 0) setAlerts((prev) => [...newAlerts, ...prev].slice(0, 30));
-    };
-
-    const loadPastAlerts = (data) => {
-        const pastAlerts = [];
-        for (let i = data.length - 1; i >= 0; i--) {
-            const log = data[i];
-            if (log.sound_db > 70) {
-                pastAlerts.push({ metric: "sound_db", message: "แจ้งเตือนเสียงดังผิดปกติ!", value: log.sound_db, time: log.created_at, device_id: log.device_id });
-            }
-            const otherMetrics = ["temperature", "humidity", "voltage"];
-            otherMetrics.forEach((metric) => {
-                const conf = METRICS_CONFIG[metric];
-                if (log[metric] > conf?.threshold || (conf?.thresholdMin && log[metric] < conf.thresholdMin)) {
-                    pastAlerts.push({ metric, message: `${conf.label} ผิดปกติ!`, value: log[metric], time: log.created_at, device_id: log.device_id });
-                }
-            });
-        }
-        setAlerts(pastAlerts.slice(0, 30));
-    };
+    }, [metricsConfig]);
 
     useEffect(() => {
-        if (!deviceId) return;
+        if (!deviceId || Object.keys(metricsConfig).length === 0) return;
 
         const fetchHistory = async () => {
             let start, end;
-
             if (timeRange === "1h") {
                 end = new Date();
                 start = new Date(end.getTime() - 3600000);
@@ -68,7 +53,6 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
                 else if (timeRange === "30d") start.setDate(start.getDate() - 29);
             }
 
-            // 💡 แก้ไข: ลบ error ออกเพราะไม่ได้ใช้งาน เพื่อแก้ ESLint Error
             const { data } = await supabase
                 .from("sensor_logs")
                 .select("*")
@@ -79,7 +63,18 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
 
             if (data && data.length > 0) {
                 setHistory(data.map(formatLog));
-                loadPastAlerts(data);
+                const pastAlerts = [];
+                [...data].reverse().forEach(log => {
+                    Object.keys(metricsConfig).forEach(mId => {
+                        const c = metricsConfig[mId];
+                        if (c && !c.is_multi_line) {
+                            if (log[mId] > c.threshold || (c.threshold_min !== null && log[mId] < c.threshold_min)) {
+                                pastAlerts.push({ metric: mId, message: `${c.label} ผิดปกติ!`, value: log[mId], time: log.created_at, device_id: log.device_id });
+                            }
+                        }
+                    });
+                });
+                setAlerts(pastAlerts.slice(0, 30));
             } else {
                 setHistory([]);
                 setAlerts([]); 
@@ -105,13 +100,13 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h")
                         }
                         return newHistory;
                     });
-                    checkAlert(log); // 💡 เรียกใช้งานฟังก์ชันที่นิยามไว้ด้านบน
+                    checkAlert(log);
                 })
                 .subscribe();
         }
 
         return () => { if (channel) supabase.removeChannel(channel); };
-    }, [deviceId, selectedDate, timeRange]);
+    }, [deviceId, selectedDate, timeRange, metricsConfig, checkAlert, formatLog]);
 
     return { history, alerts };
 }

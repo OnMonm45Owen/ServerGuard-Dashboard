@@ -2,7 +2,8 @@
 import React from "react";
 import DeviceCard from "../components/DeviceCard";
 
-export default function HomeView({ devices, loading, onNavigate, onPing, pingResults, onAddClick }) {
+// 💡 เพิ่ม isAdmin เข้ามาในวงเล็บ Props ด้วยครับ
+export default function HomeView({ devices, loading, onNavigate, onPing, pingResults, onAddClick, metricsConfig, isAdmin }) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -14,10 +15,9 @@ export default function HomeView({ devices, loading, onNavigate, onPing, pingRes
     );
   }
 
-  // 💡 คำนวณตัวเลขสถิติใหม่
+  // คำนวณตัวเลขสถิติใหม่
   const total = devices.length;
   const online = devices.filter(d => d.status === 'online').length;
-  // Anomalies นับรวม Warning, Offline และ Disconnect (สถานะใหม่)
   const anomalies = devices.filter(d => ['warning', 'offline', 'disconnect'].includes(d.status)).length;
 
   return (
@@ -37,24 +37,27 @@ export default function HomeView({ devices, loading, onNavigate, onPing, pingRes
           </div>
         </div>
 
-        <button
-          onClick={onAddClick}
-          className="
-            bg-emerald-600 hover:bg-emerald-500 
-            text-white px-8 py-4 rounded-2xl 
-            font-black text-xs uppercase tracking-[0.15em] 
-            shadow-[0_6px_0_0_#065f46] 
-            hover:translate-y-1 hover:shadow-[0_2px_0_0_#065f46] 
-            active:translate-y-2 active:shadow-none 
-            transition-all duration-150
-            flex items-center gap-2
-          "
-        >
-          <span className="text-lg">+</span> Add New Node
-        </button>
+        {/* 💡 ซ่อนปุ่ม Add New Node ถ้าเข้าใช้งานแบบ Guest (isAdmin เป็น false) */}
+        {isAdmin && (
+          <button
+            onClick={onAddClick}
+            className="
+              bg-emerald-600 hover:bg-emerald-500 
+              text-white px-8 py-4 rounded-2xl 
+              font-black text-xs uppercase tracking-[0.15em] 
+              shadow-[0_6px_0_0_#065f46] 
+              hover:translate-y-1 hover:shadow-[0_2px_0_0_#065f46] 
+              active:translate-y-2 active:shadow-none 
+              transition-all duration-150
+              flex items-center gap-2
+            "
+          >
+            <span className="text-lg">+</span> Add New Node
+          </button>
+        )}
       </div>
 
-      {/* 📊 ส่วนสถิติย้ายขึ้นมาด้านบน (ปรับดีไซน์ให้เข้ากับ Dark Mode) */}
+      {/* 📊 ส่วนสถิติ */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         <div className="p-6 bg-white dark:bg-[#1e293b] border-2 border-slate-900 dark:border-slate-800 rounded-2xl flex justify-between items-center shadow-xl">
           <span className="font-black text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">Total Devices</span>
@@ -66,7 +69,6 @@ export default function HomeView({ devices, loading, onNavigate, onPing, pingRes
           <span className="text-4xl font-black text-emerald-600 leading-none">{online}</span>
         </div>
         
-        {/* เน้นขอบแดงสำหรับส่วนที่มีปัญหา */}
         <div className="p-6 bg-white dark:bg-[#1e293b] border-2 border-slate-900 dark:border-slate-800 rounded-2xl flex justify-between items-center shadow-xl border-r-[8px] border-r-rose-600">
           <span className="font-black text-[10px] text-rose-600 uppercase tracking-[0.2em]">Anomalies</span>
           <span className="text-4xl font-black text-rose-600 leading-none">{anomalies}</span>
@@ -83,6 +85,7 @@ export default function HomeView({ devices, loading, onNavigate, onPing, pingRes
               onOpen={onNavigate} 
               onPing={onPing}
               pingResult={pingResults ? pingResults[device.id] : null}
+              metricsConfig={metricsConfig}
             />
           ))
         ) : (

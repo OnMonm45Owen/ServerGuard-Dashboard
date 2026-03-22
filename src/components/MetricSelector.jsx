@@ -1,11 +1,17 @@
+// src/components/MetricSelector.jsx
 import React from "react";
-import { METRICS_CONFIG } from "../utils/metricsConfig";
 
-export default function MetricSelector({ activeMetric, onMetricChange }) {
+// 💡 รับ metricsConfig เพิ่มเข้ามาจาก Props (ที่ส่งมาจาก useSensorData)
+export default function MetricSelector({ activeMetric, onMetricChange, metricsConfig = {} }) {
+  
+  // 🔍 กรองรายการที่จะนำมาสร้างปุ่ม (ตัวอย่าง: ไม่แสดง 'ping' หรือ 'sound_peak' ในแถบเลือก)
+  // หรือแสดงทั้งหมดตามที่อยู่ใน Database
+  const metricKeys = Object.keys(metricsConfig).filter(key => key !== 'ping' && key !== 'sound_peak');
+
   return (
     <div className="flex gap-4 mt-6 flex-wrap justify-center">
-      {Object.keys(METRICS_CONFIG).map((metricKey) => {
-        const config = METRICS_CONFIG[metricKey];
+      {metricKeys.map((metricKey) => {
+        const config = metricsConfig[metricKey];
         const isActive = metricKey === activeMetric;
 
         return (
@@ -13,7 +19,7 @@ export default function MetricSelector({ activeMetric, onMetricChange }) {
             key={metricKey}
             onClick={() => onMetricChange(metricKey)} 
             className={`
-              /* 💡 ปรับให้เป็นเส้นขอบหนา 2px ตลอดเวลา */
+              /* 💡 เส้นขอบหนา 2px และ Transition พื้นฐาน */
               px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 border-2 
               
               ${
@@ -24,13 +30,13 @@ export default function MetricSelector({ activeMetric, onMetricChange }) {
             `}
           >
             <div className="flex items-center gap-3">
-              {/* 💡 วงกลมสีประจำ Metric: ทำให้ใหญ่ขึ้นและชัดขึ้น */}
+              {/* 💡 วงกลมสีประจำ Metric: ดึงรหัสสีจาก Database */}
               <span 
                 className={`w-3 h-3 rounded-full border-2 ${isActive ? 'border-white' : 'border-transparent'}`}
-                style={{ backgroundColor: config.color }}
+                style={{ backgroundColor: config.color || '#6366f1' }}
               ></span>
               
-              {/* 💡 ตัวหนังสือ: บังคับให้เป็นตัวหนาที่สุด */}
+              {/* 💡 ชื่อเรียก (Label): ดึงจากฐานข้อมูล */}
               <span className={isActive ? "text-white" : "text-slate-900 dark:text-slate-200"}>
                 {config.label}
               </span>

@@ -11,72 +11,92 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
     const chartRef = useRef(null);
     const chartInstance = useRef(null);
 
-    // 💡 ฟังก์ชันใหม่สำหรับหาค่าเฉลี่ยตามช่วงเวลา (มิลลิวินาที)
-    const aggregateDataByMs = (data, intervalMs, cfg) => {
-        if (!data || data.length === 0) return [];
-        const groups = {};
-        
-        data.forEach(item => {
-            const time = new Date(item.x).getTime();
-            // จัดกลุ่มตามช่วงเวลาที่กำหนด (เช่น ทุก 20000ms)
-            const groupKey = Math.floor(time / intervalMs) * intervalMs;
-            
-            if (!groups[groupKey]) {
-                groups[groupKey] = { sum: 0, count: 0, hasAlert: false };
-            }
-            groups[groupKey].sum += item.y;
-            groups[groupKey].count += 1;
-            
-            // ตรวจสอบ Alert ในกลุ่มข้อมูล
-            if (item.y > cfg.threshold || (cfg.thresholdMin && item.y < cfg.thresholdMin)) {
-                groups[groupKey].hasAlert = true;
-            }
-        });
-
-        return Object.keys(groups).map(key => ({
-            x: new Date(parseInt(key)),
-            y: Number((groups[key].sum / groups[key].count).toFixed(2)),
-            isAlert: groups[key].hasAlert
-        })).sort((a, b) => a.x - b.x);
-    };
-
-    // ฟังก์ชันเดิม (คงไว้สำหรับ 7d/30d)
-    const aggregateData = (data, pointsPerDay, cfg) => {
-        if (!data || data.length === 0) return [];
-        const intervalMs = (24 * 60 * 60 * 1000) / pointsPerDay;
-        return aggregateDataByMs(data, intervalMs, cfg);
-    };
+    const getPointData = (log, metricKey, cfg) => ({
+        x: new Date(log.created_at),
+        y: parseFloat(log[metricKey]) || 0,
+        isAlert: (cfg.threshold !== null && log[metricKey] > cfg.threshold) || 
+                 (cfg.threshold_min !== null && log[metricKey] < cfg.threshold_min)
+    });
 
     useEffect(() => {
         if (!chartRef.current) return;
-        if (chartInstance.current) chartInstance.current.destroy();
-
-        const ctx = chartRef.current.getContext("2d");
+        
         const cfg = config[activeMetric];
         if (!cfg) return;
 
-        const baseColor = cfg?.color || "#3b82f6";
+        if (chartInstance.current) chartInstance.current.destroy();
+        const ctx = chartRef.current.getContext("2d");
 
-        // 1. เตรียมข้อมูลพื้นฐาน (Detailed)
-        const detailedData = history.map(log => ({
-            x: new Date(log.created_at),
-            y: parseFloat(log[activeMetric]) || 0,
-            isAlert: log[activeMetric] > cfg.threshold || (cfg.thresholdMin && log[activeMetric] < cfg.thresholdMin)
-        })).sort((a, b) => a.x - b.x);
+        let datasets = [];
 
-        // 2. จัดการการรวมกลุ่มข้อมูลตามช่วงเวลา
-        let displayData = detailedData;
-        
-        if (timeRange === '1h') {
-            // 💡 เฉลี่ยข้อมูลทุก 20 วินาที (20,000 ms)
-            displayData = aggregateDataByMs(detailedData, 20000, cfg);
-        } else if (timeRange === '24h') {
-            // เฉลี่ยทุก 5 นาที เพื่อให้กราฟนิ่งขึ้น (Optional)
-            displayData = aggregateDataByMs(detailedData, 5 * 60 * 1000, cfg);
-        } else if (timeRange === '7d') {
-            displayData = aggregateData(detailedData, 8, cfg);
-        } else if (timeRange === '30d') {
-            displayData = aggregateData(detailedData, 4, cfg);
+        if (cfg.is_multi_line && cfg.lines) {
+            datasets = cfg.lines.map(line => ({
+                label: line.label,
+                data: history.map(log => getPointData(log, line.key, cfg)).sort((a, b) => a.x - b.x),
+                borderColor: line.color,
+                backgroundColor: `${line.color}22`,
+                fill: false,
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: 0
+            }));
+        } else {
+            const baseColor = cfg?.color || "#3b82f6";
+            const displayData = history.map(log => getPointData(log, activeMetric, cfg)).sort((a, b) => a.x - b.x);
+            
+            datasets.push({
+                label: `${cfg?.label} (${cfg?.unit})`,
+                data: displayData,
+                borderColor: baseColor,
+                backgroundColor: (context) => {
+                    const chart = context.chart;
+                    const {ctx, chartArea} = chart;
+                    if (!chartArea) return null;
+                    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                    gradient.addColorStop(0, darkMode ? `${baseColor}33` : `${baseColor}44`);
+                    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+                    return gradient;
+                },
+                fill: true,
+                tension: 0.3,
+                borderWidth: 3,
+                pointRadius: (ctx) => (ctx.raw?.isAlert ? 5 : 0),
+                pointBackgroundColor: (ctx) => ctx.raw?.isAlert ? "#ef4444" : baseColor,
+            });
+        }
+
+        // 🚨 เพิ่มเส้น Max Limit (Threshold) สีแดงประ
+        if (cfg.threshold !== null && cfg.threshold !== undefined && history.length > 0) {
+            const sorted = [...history].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            datasets.push({
+                label: `Max Limit (${cfg.threshold})`,
+                data: [
+                    { x: new Date(sorted[0].created_at), y: cfg.threshold },
+                    { x: new Date(sorted[sorted.length - 1].created_at), y: cfg.threshold }
+                ],
+                borderColor: "#ef4444",
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false,
+            });
+        }
+
+        // 🚨 เพิ่มเส้น Min Limit (Threshold Min) สีส้มประ
+        if (cfg.threshold_min !== null && cfg.threshold_min !== undefined && history.length > 0) {
+            const sorted = [...history].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            datasets.push({
+                label: `Min Limit (${cfg.threshold_min})`,
+                data: [
+                    { x: new Date(sorted[0].created_at), y: cfg.threshold_min },
+                    { x: new Date(sorted[sorted.length - 1].created_at), y: cfg.threshold_min }
+                ],
+                borderColor: "#f97316",
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false,
+            });
         }
 
         const themeColors = {
@@ -85,49 +105,25 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
             tooltipBg: darkMode ? "#0f172a" : "#1e293b",
         };
 
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, darkMode ? `${baseColor}33` : `${baseColor}44`);
-        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-
         chartInstance.current = new Chart(ctx, {
             type: "line",
-            data: {
-                datasets: [
-                    {
-                        label: `${cfg?.label} (${cfg?.unit})`,
-                        data: displayData,
-                        borderColor: baseColor,
-                        backgroundColor: gradient,
-                        fill: true,
-                        tension: 0.3,
-                        borderWidth: 3,
-                        pointRadius: (ctx) => (ctx.raw?.isAlert ? 5 : timeRange === '1h' ? 2 : 0),
-                        pointBackgroundColor: (ctx) => ctx.raw?.isAlert ? "#ef4444" : baseColor,
-                    },
-                    {
-                        label: `Limit (${cfg.threshold})`,
-                        data: displayData.length > 0 ? [
-                            { x: displayData[0].x, y: cfg.threshold },
-                            { x: displayData[displayData.length - 1].x, y: cfg.threshold }
-                        ] : [],
-                        borderColor: "#ef4444",
-                        borderWidth: 2,
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false,
-                    }
-                ]
-            },
+            data: { datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
+                    legend: {
+                        display: cfg.is_multi_line || cfg.threshold !== null || cfg.threshold_min !== null, // แสดง Legend เมื่อมีหลายเส้น หรือมีเส้น Limit
+                        labels: { color: themeColors.text, font: { weight: 'bold' } }
+                    },
                     zoom: {
                         pan: { enabled: true, mode: "x" },
                         zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" }
                     },
                     tooltip: {
                         backgroundColor: themeColors.tooltipBg,
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
                         callbacks: {
                             title: (items) => new Date(items[0].raw.x).toLocaleString('th-TH', {
                                 hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -145,21 +141,16 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
                             displayFormats: { minute: 'HH:mm', hour: 'HH:mm' }
                         },
                         grid: { display: false },
-                        ticks: {
-                            color: themeColors.text,
-                            font: { weight: 'bold', size: 10 },
-                        }
+                        ticks: { color: themeColors.text, font: { weight: 'bold', size: 10 } }
                     },
                     y: {
-                        // 💡 ตั้งค่าสเกลแกน Y ให้คงที่โดยอ้างอิงจากเกณฑ์ (Threshold)
-                        beginAtZero: true,
-                        // ให้สเกลสูงสุดสูงกว่า Threshold 20% เสมอเพื่อให้กราฟไม่กระโดดไปมา
-                        suggestedMax: cfg.threshold * 1.2, 
+                        suggestedMax: cfg.threshold !== null ? cfg.threshold * 1.1 : undefined, 
+                        suggestedMin: cfg.threshold_min !== null ? cfg.threshold_min * 0.9 : undefined, 
                         grid: { color: themeColors.grid },
                         ticks: { 
                             color: themeColors.text, 
                             font: { weight: '900' },
-                            callback: (value) => `${value}${cfg.unit}`
+                            callback: (value) => `${value} ${cfg.unit}`
                         }
                     }
                 },
