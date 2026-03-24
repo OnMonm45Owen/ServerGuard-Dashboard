@@ -1,11 +1,21 @@
-/* stylelint-disable at-rule-no-unknown */
+/* index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* stylelint-enable at-rule-no-unknown */
+
 body {
+  margin: 0;
+  padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* ป้องกันการเลื่อนแนวนอนบนมือถือ (Horizontal Scroll) */
+  overflow-x: hidden; 
+}
+
+/* ตั้งค่าให้ตัวแอปพลิเคชันกว้างเต็มจอเสมอ */
+#root {
+  width: 100%;
+  min-height: 100vh;
 }
 
 .dark {
@@ -15,7 +25,10 @@ body {
 /* เน้นเส้นขอบ Focus ให้ชัดเจน */
 :focus {
   outline: 3px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
 }
+
+/* ปรับสีไอคอนปฏิทินในโหมดกลางคืน */
 .dark input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(200%) contrast(100%);
   cursor: pointer;
