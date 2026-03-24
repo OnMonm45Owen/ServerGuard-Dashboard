@@ -156,7 +156,7 @@ const AnalyticsView = ({
             </div>
 
             {/* 📜 Incident Log */}
-            <div className="bg-slate-900 dark:bg-[#0f172a] rounded-[2.5rem] p-8 border-2 border-slate-800 shadow-2xl">
+            <div className="bg-slate-900 dark:bg-[#0f172a] rounded-[1.5rem] sm:rounded-[2.5rem] p-4 sm:p-8 border-2 border-slate-800 shadow-2xl">
                 <div className="flex justify-between items-center mb-8 px-2">
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-8 bg-rose-500 rounded-full animate-bounce"></div>

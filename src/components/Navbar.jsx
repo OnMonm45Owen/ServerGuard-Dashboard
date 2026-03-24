@@ -20,7 +20,7 @@ export default function Navbar({ darkMode, setDarkMode, onHomeClick, onSettingsC
             🛡️
           </div>
           <div>
-            <span className="font-black text-2xl text-slate-900 dark:text-white block leading-none tracking-tighter">
+            <span className="font-black text-lg sm:text-2xl text-slate-900 dark:text-white block leading-none tracking-tighter">
               ServerGuard <span className="text-blue-600 dark:text-indigo-400">Pro</span>
             </span>
             <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.3em]">Monitoring System</span>
