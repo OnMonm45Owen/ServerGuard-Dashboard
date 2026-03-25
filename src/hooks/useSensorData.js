@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 
-// 💡 รับ metricsConfig เพิ่มเข้ามาเป็นพารามิเตอร์
 export default function useSensorData(deviceId, selectedDate, timeRange = "24h", metricsConfig = {}) {
     const [history, setHistory] = useState([]);
     const [alerts, setAlerts] = useState([]);
@@ -41,25 +40,42 @@ export default function useSensorData(deviceId, selectedDate, timeRange = "24h",
 
         const fetchHistory = async () => {
             let start, end;
+            
+            // 💡 1. ปรับปรุงการคำนวณขอบเขตเวลา (Boundary) ให้ครอบคลุมเต็มวัน
             if (timeRange === "1h") {
                 end = new Date();
                 start = new Date(end.getTime() - 3600000);
             } else {
                 end = selectedDate ? new Date(selectedDate) : new Date();
-                if (selectedDate) end.setHours(23, 59, 59, 999);
+                
+                // ปรับเวลา End ให้เป็น 23:59:59 ของวันนั้นๆ เสมอถ้ามีการเลือกวันที่
+                if (selectedDate) {
+                    end.setHours(23, 59, 59, 999);
+                }
+                
                 start = new Date(end);
-                if (timeRange === "24h") start.setHours(0, 0, 0, 0);
-                else if (timeRange === "7d") start.setDate(start.getDate() - 6);
-                else if (timeRange === "30d") start.setDate(start.getDate() - 29);
+                
+                // ปรับเวลา Start ให้เริ่มที่ 00:00:00 เสมอ เพื่อให้กราฟดึงข้อมูลเต็มวัน
+                if (timeRange === "24h") {
+                    start.setHours(0, 0, 0, 0);
+                } else if (timeRange === "7d") {
+                    start.setDate(start.getDate() - 6);
+                    start.setHours(0, 0, 0, 0);
+                } else if (timeRange === "30d") {
+                    start.setDate(start.getDate() - 29);
+                    start.setHours(0, 0, 0, 0);
+                }
             }
 
+            // 💡 2. เพิ่ม .limit(50000) เพื่อขอข้อมูลให้ครบทุกแถว
             const { data } = await supabase
                 .from("sensor_logs")
                 .select("*")
                 .eq("device_id", deviceId)
                 .gte("created_at", start.toISOString())
                 .lte("created_at", end.toISOString())
-                .order("created_at", { ascending: true });
+                .order("created_at", { ascending: true })
+                .limit(50000); // 👈 สำคัญมาก! สำหรับดึงข้อมูล 7 วัน หรือ 30 วัน
 
             if (data && data.length > 0) {
                 setHistory(data.map(formatLog));

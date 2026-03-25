@@ -113,7 +113,7 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        display: cfg.is_multi_line || cfg.threshold !== null || cfg.threshold_min !== null, // แสดง Legend เมื่อมีหลายเส้น หรือมีเส้น Limit
+                        display: cfg.is_multi_line || cfg.threshold !== null || cfg.threshold_min !== null,
                         labels: { color: themeColors.text, font: { weight: 'bold' } }
                     },
                     zoom: {
@@ -127,7 +127,7 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
                         callbacks: {
                             title: (items) => new Date(items[0].raw.x).toLocaleString('th-TH', {
                                 hour: '2-digit', minute: '2-digit', second: '2-digit',
-                                day: 'numeric', month: 'short'
+                                day: 'numeric', month: 'short', year: 'numeric' // 💡 Tooltip โชว์ละเอียดเสมอ
                             }),
                         }
                     }
@@ -137,11 +137,27 @@ export default function MetricChart({ history, activeMetric, config, darkMode, t
                         type: "time",
                         adapters: { date: { locale: th } },
                         time: {
-                            unit: timeRange === '1h' ? 'minute' : 'hour',
-                            displayFormats: { minute: 'HH:mm', hour: 'HH:mm' }
+                            // 💡 1. ปรับหน่วยความละเอียดของกราฟตาม timeRange
+                            unit: timeRange === '1h' ? 'minute' : 
+                                  timeRange === '24h' ? 'hour' : 
+                                  timeRange === '7d' ? 'hour' : 'day',
+                            
+                            // 💡 2. กำหนด Format แกน X ด้านล่างกราฟ
+                            displayFormats: { 
+                                minute: 'HH:mm', 
+                                hour: timeRange === '7d' ? 'd MMM HH:mm' : 'HH:mm', // โชว์ 25 มี.ค. 12:00
+                                day: 'd MMM' // โชว์ 25 มี.ค.
+                            },
+                            tooltipFormat: 'd MMM yyyy HH:mm:ss'
                         },
                         grid: { display: false },
-                        ticks: { color: themeColors.text, font: { weight: 'bold', size: 10 } }
+                        ticks: { 
+                            color: themeColors.text, 
+                            font: { weight: 'bold', size: 10 },
+                            // 💡 3. เพิ่มการเอียงตัวอักษร 45 องศาเพื่อไม่ให้ข้อความยาวๆ ชนกัน
+                            maxRotation: 45, 
+                            minRotation: 0
+                        }
                     },
                     y: {
                         suggestedMax: cfg.threshold !== null ? cfg.threshold * 1.1 : undefined, 
